@@ -1,0 +1,56 @@
+[
+  {
+    "id": "magasin-lidl",
+    "nom": "Lidl",
+    "rayons": [
+      { "id": "lidl-r1",  "nom": "Fruits & Légumes" },
+      { "id": "lidl-r2",  "nom": "Boulangerie" },
+      { "id": "lidl-r3",  "nom": "Boucherie & Charcuterie" },
+      { "id": "lidl-r4",  "nom": "Poissonnerie" },
+      { "id": "lidl-r5",  "nom": "Produits Laitiers & Œufs" },
+      { "id": "lidl-r6",  "nom": "Épicerie Salée" },
+      { "id": "lidl-r7",  "nom": "Épicerie Sucrée" },
+      { "id": "lidl-r8",  "nom": "Conserves" },
+      { "id": "lidl-r9",  "nom": "Surgelés" },
+      { "id": "lidl-r10", "nom": "Boissons" },
+      { "id": "lidl-r11", "nom": "Bio & Végétarien" },
+      { "id": "lidl-r12", "nom": "Entretien & Hygiène" }
+    ]
+  },
+  {
+    "id": "magasin-carrefour",
+    "nom": "Carrefour",
+    "rayons": [
+      { "id": "carrefour-r1",  "nom": "Fruits & Légumes" },
+      { "id": "carrefour-r2",  "nom": "Boulangerie" },
+      { "id": "carrefour-r3",  "nom": "Boucherie & Charcuterie" },
+      { "id": "carrefour-r4",  "nom": "Poissonnerie" },
+      { "id": "carrefour-r5",  "nom": "Produits Laitiers & Œufs" },
+      { "id": "carrefour-r6",  "nom": "Épicerie Salée" },
+      { "id": "carrefour-r7",  "nom": "Épicerie Sucrée" },
+      { "id": "carrefour-r8",  "nom": "Conserves" },
+      { "id": "carrefour-r9",  "nom": "Surgelés" },
+      { "id": "carrefour-r10", "nom": "Boissons" },
+      { "id": "carrefour-r11", "nom": "Bio & Végétarien" },
+      { "id": "carrefour-r12", "nom": "Entretien & Hygiène" }
+    ]
+  },
+  {
+    "id": "magasin-leclerc",
+    "nom": "E.Leclerc",
+    "rayons": [
+      { "id": "leclerc-r1",  "nom": "Fruits & Légumes" },
+      { "id": "leclerc-r2",  "nom": "Boulangerie" },
+      { "id": "leclerc-r3",  "nom": "Boucherie & Charcuterie" },
+      { "id": "leclerc-r4",  "nom": "Poissonnerie" },
+      { "id": "leclerc-r5",  "nom": "Produits Laitiers & Œufs" },
+      { "id": "leclerc-r6",  "nom": "Épicerie Salée" },
+      { "id": "leclerc-r7",  "nom": "Épicerie Sucrée" },
+      { "id": "leclerc-r8",  "nom": "Conserves" },
+      { "id": "leclerc-r9",  "nom": "Surgelés" },
+      { "id": "leclerc-r10", "nom": "Boissons" },
+      { "id": "leclerc-r11", "nom": "Bio & Végétarien" },
+      { "id": "leclerc-r12", "nom": "Entretien & Hygiène" }
+    ]
+  }
+]
