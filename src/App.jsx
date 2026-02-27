@@ -4,7 +4,7 @@ import Parametres from './pages/Parametres'
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/ricourses">
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/parametres" element={<Parametres />} />
