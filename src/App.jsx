@@ -1,14 +1,19 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { MagasinProvider } from './context/MagasinContext'
 import Home from './pages/Home'
 import Parametres from './pages/Parametres'
+import ListeCourses from './pages/ListeCourses'
 
 function App() {
   return (
     <BrowserRouter basename="/ricourses">
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/parametres" element={<Parametres />} />
-      </Routes>
+      <MagasinProvider>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/parametres" element={<Parametres />} />
+          <Route path="/liste" element={<ListeCourses />} />
+        </Routes>
+      </MagasinProvider>
     </BrowserRouter>
   )
 }

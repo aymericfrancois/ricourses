@@ -76,20 +76,5 @@ export function usePlats() {
     )
   }
 
-  function updateIngredientRayon(platId, ingredientId, rayon) {
-    setPlats(prev =>
-      prev.map(p =>
-        p.id !== platId
-          ? p
-          : {
-              ...p,
-              ingredients: p.ingredients.map(i =>
-                i.id !== ingredientId ? i : { ...i, rayon }
-              ),
-            }
-      )
-    )
-  }
-
-  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, ajouterIngredient, supprimerIngredient, updateIngredientRayon }
+  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, ajouterIngredient, supprimerIngredient }
 }

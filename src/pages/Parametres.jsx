@@ -5,21 +5,20 @@ import {
   Pencil, X, Check, Store, ChevronUp as Up, ChevronDown as Down,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
-import { useMagasins } from '../hooks/useMagasins'
+import { useMagasinContext } from '../context/MagasinContext'
 import { ICONES, ICONES_LIST } from '../utils/icones'
-import mappingRayons from '../data/mappingRayons.json'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
 
-function getRayonDisplay(ing) {
-  return ing.rayon ?? mappingRayons[ing.nom] ?? ''
-}
-
 function Parametres() {
-  const { plats, ajouterPlat, supprimerPlat, updatePlatIcone, ajouterIngredient, supprimerIngredient, updateIngredientRayon } = usePlats()
-  const { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon } = useMagasins()
+  const { plats, ajouterPlat, supprimerPlat, updatePlatIcone, ajouterIngredient, supprimerIngredient } = usePlats()
+  const {
+    magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon,
+    magasinActif, setMagasinActif, getRayon, setRayon,
+  } = useMagasinContext()
 
-  const rayonsUniques = [...new Set(magasins.flatMap(m => m.rayons.map(r => r.nom)))]
+  const magasinCourant = magasins.find(m => m.nom === magasinActif)
+  const rayonsActifs = magasinCourant?.rayons.map(r => r.nom) ?? []
 
   // --- Onglets ---
   const [activeTab, setActiveTab] = useState('plats')
@@ -29,10 +28,9 @@ function Parametres() {
   const [ingredientForms, setIngredientForms] = useState({})
   const [openForms, setOpenForms] = useState({})
   const [editIconePlat, setEditIconePlat] = useState(null)
-  const [selectedPlatId, setSelectedPlatId] = useState(null) // panneau desktop
+  const [selectedPlatId, setSelectedPlatId] = useState(null)
 
   // --- État onglet Magasins ---
-  const [magasinActif, setMagasinActif] = useState(magasins[0]?.id ?? null)
   const [editRayonId, setEditRayonId] = useState(null)
   const [editRayonNom, setEditRayonNom] = useState('')
   const [nouveauRayon, setNouveauRayon] = useState('')
@@ -85,8 +83,8 @@ function Parametres() {
   }
 
   function confirmEditRayon() {
-    if (editRayonId && magasinActif) {
-      renommerRayon(magasinActif, editRayonId, editRayonNom)
+    if (editRayonId && magasinCourant) {
+      renommerRayon(magasinCourant.id, editRayonId, editRayonNom)
     }
     setEditRayonId(null)
     setEditRayonNom('')
@@ -102,22 +100,34 @@ function Parametres() {
     if (e.key === 'Escape') cancelEditRayon()
   }
 
-  function handleSwitchMagasin(id) {
-    setMagasinActif(id)
+  function handleSwitchMagasin(nom) {
+    setMagasinActif(nom)
     setEditRayonId(null)
     setEditRayonNom('')
   }
 
   function handleAjouterRayon(e) {
     e.preventDefault()
-    if (magasinActif) ajouterRayon(magasinActif, nouveauRayon)
+    if (magasinCourant) ajouterRayon(magasinCourant.id, nouveauRayon)
     setNouveauRayon('')
   }
 
-  const magasinCourant = magasins.find(m => m.id === magasinActif)
   const selectedPlat = plats.find(p => p.id === selectedPlatId)
 
-  // ---- JSX : liste ingrédients (partagée mobile inline + panneau desktop) ----
+  // ---- Store selector partagé ----
+  const storeSelector = (
+    <select
+      value={magasinActif}
+      onChange={e => setMagasinActif(e.target.value)}
+      className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 shadow-sm"
+    >
+      {magasins.map(m => (
+        <option key={m.id} value={m.nom}>{m.nom}</option>
+      ))}
+    </select>
+  )
+
+  // ---- JSX : liste ingrédients ----
   function renderIngredients(plat) {
     return (
       <div className="space-y-3">
@@ -133,12 +143,12 @@ function Parametres() {
                   <span className="text-gray-400 ml-2">{ing.quantite} {ing.unite}</span>
                 </span>
                 <select
-                  value={getRayonDisplay(ing)}
-                  onChange={e => updateIngredientRayon(plat.id, ing.id, e.target.value)}
+                  value={getRayon(ing.nom)}
+                  onChange={e => setRayon(ing.nom, e.target.value)}
                   className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 max-w-36 shrink-0"
                 >
                   <option value="">— rayon —</option>
-                  {rayonsUniques.map(r => (
+                  {rayonsActifs.map(r => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
@@ -212,6 +222,8 @@ function Parametres() {
             <ArrowLeft size={20} />
           </Link>
           <h1 className="text-xl font-bold text-gray-900 flex-1">Paramètres</h1>
+
+          {storeSelector}
 
           {/* Tab bar */}
           <div className="flex gap-1">
@@ -295,12 +307,10 @@ function Parametres() {
                           <Icon size={18} className="text-green-600 shrink-0" />
                           <span className="flex-1 font-medium text-gray-800">{plat.nom}</span>
 
-                          {/* Bouton éditer icône */}
                           <button
                             onClick={e => { e.stopPropagation(); setEditIconePlat(editIconePlat === plat.id ? null : plat.id) }}
                             className="p-1.5 text-gray-300 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             aria-label="Éditer l'icône"
-                            title="Éditer l'icône"
                           >
                             <Pencil size={14} />
                           </button>
@@ -309,7 +319,6 @@ function Parametres() {
                           <button
                             onClick={e => { e.stopPropagation(); toggleForm(plat.id) }}
                             className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors md:hidden"
-                            aria-label={openForms[plat.id] ? 'Masquer les ingrédients' : 'Afficher les ingrédients'}
                           >
                             {openForms[plat.id] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             ({plat.ingredients.length})
@@ -337,7 +346,6 @@ function Parametres() {
                               <button
                                 onClick={() => setEditIconePlat(null)}
                                 className="text-gray-300 hover:text-gray-500 transition-colors"
-                                aria-label="Fermer le picker"
                               >
                                 <X size={14} />
                               </button>
@@ -356,7 +364,6 @@ function Parametres() {
                                         : 'border-gray-200 text-gray-500 hover:border-green-300 hover:bg-green-50 hover:text-green-600'
                                     }`}
                                     title={nom}
-                                    aria-label={nom}
                                   >
                                     <PickIcon size={18} />
                                   </button>
@@ -379,11 +386,10 @@ function Parametres() {
               </section>
             </div>
 
-            {/* Colonne droite : détail du plat sélectionné — desktop uniquement */}
+            {/* Colonne droite — desktop uniquement */}
             <div className="hidden md:block sticky top-20">
               {selectedPlat ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                  {/* Header panneau */}
                   <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
                     {(() => {
                       const Icon = ICONES[selectedPlat.icone] ?? ICONES.utensils
@@ -424,9 +430,9 @@ function Parametres() {
                 {magasins.map(m => (
                   <button
                     key={m.id}
-                    onClick={() => handleSwitchMagasin(m.id)}
+                    onClick={() => handleSwitchMagasin(m.nom)}
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm border-2 transition-all ${
-                      magasinActif === m.id
+                      magasinActif === m.nom
                         ? 'bg-green-600 text-white border-green-700 shadow-md font-semibold'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:text-green-700'
                     }`}
@@ -450,12 +456,10 @@ function Parametres() {
                   {magasinCourant.rayons.map((rayon, idx) => (
                     <div key={rayon.id} className="flex items-center gap-2 px-4 py-3">
 
-                      {/* Numéro */}
                       <span className="text-xs text-gray-500 w-6 text-right shrink-0 font-mono">
                         {idx + 1}
                       </span>
 
-                      {/* Flèches */}
                       <div className="flex flex-col gap-0.5">
                         <button
                           onClick={() => moveRayonUp(magasinCourant.id, idx)}
@@ -475,7 +479,6 @@ function Parametres() {
                         </button>
                       </div>
 
-                      {/* Nom ou input édition */}
                       {editRayonId === rayon.id ? (
                         <input
                           autoFocus
@@ -489,7 +492,6 @@ function Parametres() {
                         <span className="flex-1 text-sm font-medium text-gray-800">{rayon.nom}</span>
                       )}
 
-                      {/* Actions */}
                       {editRayonId === rayon.id ? (
                         <div className="flex gap-1">
                           <button
@@ -530,7 +532,6 @@ function Parametres() {
                   ))}
                 </div>
 
-                {/* Ajouter un rayon */}
                 <form onSubmit={handleAjouterRayon} className="flex gap-2 mt-4">
                   <input
                     type="text"
