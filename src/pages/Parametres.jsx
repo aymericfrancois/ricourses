@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
+  Plus, Trash2, ChevronDown, ChevronUp,
   Pencil, X, Check, Store, ChevronUp as Up, ChevronDown as Down,
+  Search,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
+import { usePlanningContext } from '../context/PlanningContext'
 import { ICONES, ICONES_LIST } from '../utils/icones'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
@@ -16,6 +17,7 @@ function Parametres() {
     magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon,
     magasinActif, setMagasinActif, getRayon, setRayon,
   } = useMagasinContext()
+  const { espacesLibres } = usePlanningContext()
 
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsActifs = magasinCourant?.rayons.map(r => r.nom) ?? []
@@ -29,6 +31,9 @@ function Parametres() {
   const [openForms, setOpenForms] = useState({})
   const [editIconePlat, setEditIconePlat] = useState(null)
   const [selectedPlatId, setSelectedPlatId] = useState(null)
+
+  // --- État onglet Catalogue ---
+  const [searchCatalogue, setSearchCatalogue] = useState('')
 
   // --- État onglet Magasins ---
   const [editRayonId, setEditRayonId] = useState(null)
@@ -114,19 +119,6 @@ function Parametres() {
 
   const selectedPlat = plats.find(p => p.id === selectedPlatId)
 
-  // ---- Store selector partagé ----
-  const storeSelector = (
-    <select
-      value={magasinActif}
-      onChange={e => setMagasinActif(e.target.value)}
-      className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 shadow-sm"
-    >
-      {magasins.map(m => (
-        <option key={m.id} value={m.nom}>{m.nom}</option>
-      ))}
-    </select>
-  )
-
   // ---- JSX : liste ingrédients ----
   function renderIngredients(plat) {
     return (
@@ -211,40 +203,28 @@ function Parametres() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Link
-            to="/"
-            className="p-1.5 rounded-lg text-gray-500 hover:text-green-600 hover:bg-gray-100 transition-colors"
-            aria-label="Retour à l'accueil"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900 flex-1">Paramètres</h1>
-
-          {storeSelector}
-
-          {/* Tab bar */}
-          <div className="flex gap-1">
-            {['plats', 'magasins'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? 'bg-green-50 text-green-700 border-b-2 border-green-600'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {tab === 'plats' ? 'Plats' : 'Magasins'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
       <main className="max-w-5xl mx-auto px-4 py-6">
+
+        {/* Onglets */}
+        <div className="flex gap-1 mb-6 border-b border-gray-100 pb-3">
+          {[
+            { key: 'plats', label: 'Plats' },
+            { key: 'magasins', label: 'Magasins' },
+            { key: 'catalogue', label: 'Catalogue' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === key
+                  ? 'bg-green-50 text-green-700 border-b-2 border-green-600'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* ===== ONGLET PLATS ===== */}
         {activeTab === 'plats' && (
@@ -416,6 +396,71 @@ function Parametres() {
 
           </div>
         )}
+
+        {/* ===== ONGLET CATALOGUE ===== */}
+        {activeTab === 'catalogue' && (() => {
+          // Construire la liste unique d'ingrédients (plats + espaces libres)
+          const seen = new Map() // lowercase → nom affiché
+          for (const plat of plats) {
+            for (const ing of plat.ingredients) {
+              const key = ing.nom.toLowerCase()
+              if (!seen.has(key)) seen.set(key, ing.nom)
+            }
+          }
+          for (const items of Object.values(espacesLibres)) {
+            for (const ing of items) {
+              const key = ing.nom.toLowerCase()
+              if (!seen.has(key)) seen.set(key, ing.nom)
+            }
+          }
+          const allIngredients = [...seen.entries()]
+            .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+            .filter(([key]) => key.includes(searchCatalogue.toLowerCase().trim()))
+
+          return (
+            <div className="max-w-xl">
+              <div className="relative mb-4">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchCatalogue}
+                  onChange={e => setSearchCatalogue(e.target.value)}
+                  placeholder="Rechercher un ingrédient…"
+                  className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              {allIngredients.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">
+                  {seen.size === 0
+                    ? 'Aucun ingrédient connu. Ajoutez des plats ou des ingrédients libres dans le Planning.'
+                    : 'Aucun résultat pour cette recherche.'}
+                </p>
+              ) : (
+                <ul className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+                  {allIngredients.map(([key, nom]) => (
+                    <li key={key} className="flex items-center gap-3 px-4 py-3">
+                      <span className="flex-1 text-sm font-medium text-gray-800">{nom}</span>
+                      <select
+                        value={getRayon(nom)}
+                        onChange={e => setRayon(nom, e.target.value)}
+                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 max-w-36 shrink-0"
+                      >
+                        <option value="">— rayon —</option>
+                        {rayonsActifs.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-gray-400 mt-3 text-center">
+                {seen.size} ingrédient{seen.size > 1 ? 's' : ''} connu{seen.size > 1 ? 's' : ''} · Magasin actif : {magasinActif}
+              </p>
+            </div>
+          )
+        })()}
 
         {/* ===== ONGLET MAGASINS ===== */}
         {activeTab === 'magasins' && (

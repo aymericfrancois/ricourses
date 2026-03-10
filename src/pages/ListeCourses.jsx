@@ -1,11 +1,10 @@
-import { Link } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, Package } from 'lucide-react'
+import { ShoppingCart, Package } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 
 function ListeCourses() {
   const { plats } = usePlats()
-  const { magasins, magasinActif, setMagasinActif, getRayon } = useMagasinContext()
+  const { magasins, magasinActif, getRayon } = useMagasinContext()
 
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsOrdonnes = magasinCourant?.rayons.map(r => r.nom) ?? []
@@ -40,29 +39,6 @@ function ListeCourses() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
-      <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Link
-            to="/"
-            className="p-1.5 rounded-lg text-gray-500 hover:text-green-600 hover:bg-gray-100 transition-colors"
-            aria-label="Retour à l'accueil"
-          >
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900 flex-1">Liste de courses</h1>
-          <select
-            value={magasinActif}
-            onChange={e => setMagasinActif(e.target.value)}
-            className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 shadow-sm"
-          >
-            {magasins.map(m => (
-              <option key={m.id} value={m.nom}>{m.nom}</option>
-            ))}
-          </select>
-        </div>
-      </header>
-
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
         {totalIngredients === 0 ? (
