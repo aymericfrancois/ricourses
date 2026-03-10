@@ -102,6 +102,20 @@ function reducer(state, action) {
         },
       }
     }
+    case 'UPDATE_INGREDIENT_LIBRE': {
+      const bloc = action.bloc
+      return {
+        ...state,
+        espacesLibres: {
+          ...state.espacesLibres,
+          [bloc]: state.espacesLibres[bloc].map(i =>
+            i.id === action.id
+              ? { ...i, quantite: Number(action.quantite), unite: action.unite }
+              : i
+          ),
+        },
+      }
+    }
     case 'TOGGLE_EXCLU': {
       return updateDelta(state, action.jourIdx, action.repas, delta => {
         const excluded = delta.excluded.includes(action.ingId)
@@ -168,6 +182,9 @@ export function PlanningProvider({ children }) {
   function supprimerIngredientLibre(bloc, id) {
     dispatch({ type: 'SUPPRIMER_INGREDIENT_LIBRE', bloc, id })
   }
+  function updateIngredientLibre(bloc, id, quantite, unite) {
+    dispatch({ type: 'UPDATE_INGREDIENT_LIBRE', bloc, id, quantite, unite })
+  }
   function toggleExclu(jourIdx, repas, ingId) {
     dispatch({ type: 'TOGGLE_EXCLU', jourIdx, repas, ingId })
   }
@@ -190,7 +207,7 @@ export function PlanningProvider({ children }) {
       semaine: state.semaine,
       espacesLibres: state.espacesLibres,
       setMidi, setSoir,
-      ajouterIngredientLibre, supprimerIngredientLibre,
+      ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
       toggleExclu, setOverride, addExtra, removeExtra,
       resetPlanning,
     }}>

@@ -1,11 +1,18 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Trash2, Plus, ShoppingCart, Package, RotateCcw, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  Trash2, Plus, ShoppingCart, Package, RotateCcw, X,
+  Check, ChevronDown, ChevronUp, GripVertical,
+} from 'lucide-react'
+import {
+  DndContext, DragOverlay, useDroppable, useDraggable,
+  useSensor, useSensors, PointerSensor, TouchSensor,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
-
 const BLOCS_LIBRES = [
   { key: 'petitDejeuner', label: 'Petit Déjeuner' },
   { key: 'achatsPonctuels', label: 'Achats Ponctuels' },
@@ -17,16 +24,13 @@ function PlatCombobox({ value, onChange, plats }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-
   const selectedPlat = plats.find(p => p.id === value)
   const filtered = query.trim()
     ? plats.filter(p => p.nom.toLowerCase().includes(query.toLowerCase()))
     : plats
 
   useEffect(() => {
-    function handle(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
@@ -39,15 +43,12 @@ function PlatCombobox({ value, onChange, plats }) {
         onFocus={() => { setQuery(''); setOpen(true) }}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         placeholder="— choisir —"
-        className={`w-full rounded-lg border bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 ${
-          value ? 'border-green-300 pr-6' : 'border-gray-200'
-        }`}
+        className={`w-full rounded-lg border bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 ${value ? 'border-green-300 pr-6' : 'border-gray-200'}`}
       />
       {value && (
         <button
           onMouseDown={e => { e.preventDefault(); onChange(null); setQuery(''); setOpen(false) }}
           className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
-          aria-label="Effacer"
         >
           <X size={12} />
         </button>
@@ -58,9 +59,7 @@ function PlatCombobox({ value, onChange, plats }) {
             <li
               key={p.id}
               onMouseDown={e => { e.preventDefault(); onChange(p.id); setQuery(''); setOpen(false) }}
-              className={`px-3 py-2 text-xs cursor-pointer hover:bg-green-50 hover:text-green-700 transition-colors ${
-                value === p.id ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'
-              }`}
+              className={`px-3 py-2 text-xs cursor-pointer hover:bg-green-50 hover:text-green-700 transition-colors ${value === p.id ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
             >
               {p.nom}
             </li>
@@ -76,20 +75,17 @@ function PlatCombobox({ value, onChange, plats }) {
   )
 }
 
-// ---- Combobox Ingrédients (noms) ----
+// ---- Combobox Ingrédients ----
 function IngredientCombobox({ value, onChange, suggestions, placeholder = 'Ingrédient', className = '' }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
-
   const filtered = query.trim()
     ? suggestions.filter(n => n.toLowerCase().includes(query.toLowerCase()))
     : suggestions
 
   useEffect(() => {
-    function handle(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [])
@@ -111,9 +107,7 @@ function IngredientCombobox({ value, onChange, suggestions, placeholder = 'Ingr�
             <li
               key={nom}
               onMouseDown={e => { e.preventDefault(); onChange(nom); setQuery(''); setOpen(false) }}
-              className={`px-3 py-2 text-sm cursor-pointer hover:bg-green-50 hover:text-green-700 transition-colors ${
-                value === nom ? 'font-medium text-green-700' : 'text-gray-700'
-              }`}
+              className={`px-3 py-2 text-sm cursor-pointer hover:bg-green-50 hover:text-green-700 transition-colors ${value === nom ? 'font-medium text-green-700' : 'text-gray-700'}`}
             >
               {nom}
             </li>
@@ -136,65 +130,41 @@ function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, on
 
   return (
     <div className="mt-2 bg-gray-50 rounded-lg border border-gray-100 overflow-hidden text-xs">
-
-      {/* Ingrédients d'origine */}
       <div className="divide-y divide-gray-100">
         {plat.ingredients.map(ing => {
           const exclu = delta.excluded.includes(ing.id)
           const qte = delta.overrides[ing.id]?.quantite ?? ing.quantite
           const unite = delta.overrides[ing.id]?.unite ?? ing.unite
           return (
-            <div
-              key={ing.id}
-              className={`flex items-center gap-2 px-3 py-1.5 transition-colors ${exclu ? 'opacity-50' : ''}`}
-            >
-              {/* Toggle exclusion */}
+            <div key={ing.id} className={`flex items-center gap-2 px-3 py-1.5 ${exclu ? 'opacity-50' : ''}`}>
               <button
                 type="button"
                 onClick={() => onToggleExclu(ing.id)}
-                className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${
-                  exclu
-                    ? 'border-gray-300 bg-gray-200'
-                    : 'border-green-400 bg-green-50 hover:bg-red-50 hover:border-red-300'
-                }`}
-                title={exclu ? 'Réinclure' : 'Exclure de ce repas'}
+                className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${exclu ? 'border-gray-300 bg-gray-200' : 'border-green-400 bg-green-50 hover:bg-red-50 hover:border-red-300'}`}
               >
                 {!exclu && <Check size={9} className="text-green-600" />}
               </button>
-
-              {/* Nom */}
               <span className={`flex-1 min-w-0 font-medium text-gray-700 truncate ${exclu ? 'line-through text-gray-400' : ''}`}>
                 {ing.nom}
               </span>
-
-              {/* Quantité éditable */}
               {!exclu && (
                 <>
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="number" min="0" step="any"
                     value={qte}
                     onChange={e => onSetOverride(ing.id, e.target.value, unite)}
-                    className="w-14 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-500 text-right"
+                    className="w-14 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-green-500"
                   />
                   <select
                     value={unite}
                     onChange={e => onSetOverride(ing.id, qte, e.target.value)}
-                    className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                   >
                     {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </>
               )}
-
-              {/* Bouton supprimer (exclure) */}
-              <button
-                type="button"
-                onClick={() => onToggleExclu(ing.id)}
-                className={`shrink-0 transition-colors ${exclu ? 'text-gray-400 hover:text-green-500' : 'text-gray-300 hover:text-red-400'}`}
-                title={exclu ? 'Réinclure' : 'Exclure'}
-              >
+              <button type="button" onClick={() => onToggleExclu(ing.id)} className={`shrink-0 transition-colors ${exclu ? 'text-gray-400 hover:text-green-500' : 'text-gray-300 hover:text-red-400'}`}>
                 <X size={12} />
               </button>
             </div>
@@ -202,23 +172,14 @@ function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, on
         })}
       </div>
 
-      {/* Extras ajoutés pour ce repas */}
       {delta.extras.length > 0 && (
         <div className="border-t border-dashed border-gray-200">
-          <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-            Ajoutés pour ce repas
-          </p>
+          <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ajoutés pour ce repas</p>
           {delta.extras.map(extra => (
             <div key={extra.id} className="flex items-center gap-2 px-3 py-1.5">
               <span className="flex-1 font-medium text-green-700 truncate">{extra.nom}</span>
-              <span className="text-gray-400 tabular-nums">
-                {extra.quantite > 0 ? `${extra.quantite} ${extra.unite}` : extra.unite}
-              </span>
-              <button
-                type="button"
-                onClick={() => onRemoveExtra(extra.id)}
-                className="text-gray-300 hover:text-red-400 transition-colors shrink-0"
-              >
+              <span className="text-gray-400 tabular-nums">{extra.quantite > 0 ? `${extra.quantite} ${extra.unite}` : extra.unite}</span>
+              <button type="button" onClick={() => onRemoveExtra(extra.id)} className="text-gray-300 hover:text-red-400 transition-colors shrink-0">
                 <X size={12} />
               </button>
             </div>
@@ -226,7 +187,6 @@ function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, on
         </div>
       )}
 
-      {/* Formulaire d'ajout d'ingrédient */}
       <form onSubmit={handleAddExtra} className="border-t border-gray-100 px-3 py-2 flex flex-wrap gap-1.5 items-center">
         <IngredientCombobox
           value={formExtra.nom}
@@ -236,41 +196,102 @@ function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, on
           className="flex-1 min-w-24"
         />
         <input
-          type="number"
-          min="0"
-          step="any"
+          type="number" min="0" step="any"
           value={formExtra.quantite}
           onChange={e => setFormExtra(f => ({ ...f, quantite: e.target.value }))}
           placeholder="Qté"
-          className="w-14 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="w-14 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
         />
         <select
           value={formExtra.unite}
           onChange={e => setFormExtra(f => ({ ...f, unite: e.target.value }))}
-          className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-500"
+          className="rounded-lg border border-gray-200 bg-white px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
         >
           {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
         </select>
-        <button
-          type="submit"
-          className="flex items-center gap-1 rounded-lg bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 transition-colors"
-        >
-          <Plus size={11} />
-          Ajouter
+        <button type="submit" className="flex items-center gap-1 rounded-lg bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700 transition-colors">
+          <Plus size={11} />Ajouter
         </button>
       </form>
     </div>
   )
 }
 
+// ---- Ingrédient draggable ----
+function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `ing:${item.nom}`,
+    data: item,
+  })
+  const style = { transform: CSS.Translate.toString(transform) }
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      onClick={onToggle}
+      className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-all hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+    >
+      {/* Drag handle */}
+      <span
+        onClick={e => e.stopPropagation()}
+        {...listeners}
+        {...attributes}
+        className="text-gray-200 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 touch-none"
+      >
+        <GripVertical size={14} />
+      </span>
+      {/* Checkbox */}
+      <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isChecked ? 'border-green-500 bg-green-500' : borderColor}`}>
+        {isChecked && <Check size={10} className="text-white" />}
+      </span>
+      <span className={`flex-1 text-sm font-medium transition-colors ${isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+        {item.nom}
+      </span>
+      <span className={`text-sm tabular-nums transition-colors ${isChecked ? 'text-gray-300' : 'text-gray-400'}`}>
+        {item.quantite > 0 ? `${item.quantite} ${item.unite}` : item.unite}
+      </span>
+    </li>
+  )
+}
+
+// ---- Zone droppable (rayon) ----
+function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, isOrphan = false }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `rayon:${rayonId}` })
+  const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+  const borderClass = isOrphan ? 'border-orange-100' : 'border-gray-100'
+
+  return (
+    <section ref={setNodeRef} className={`rounded-xl transition-all ${isOver ? 'ring-2 ring-green-400 ring-offset-1' : ''}`}>
+      <h3 className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isOver ? 'text-green-600' : 'text-gray-400'}`}>
+        {isOrphan && <Package size={13} />}
+        {label}
+        <span className="text-gray-300 font-normal normal-case">({items.length})</span>
+        {isOver && <span className="text-green-500 font-normal normal-case text-[10px]">← déposer ici</span>}
+      </h3>
+      <ul className={`bg-white rounded-xl shadow-sm border divide-y divide-gray-50 transition-colors ${isOver ? 'border-green-300' : borderClass}`}>
+        {sorted.map(item => (
+          <DraggableIngredient
+            key={item.nom}
+            item={item}
+            isChecked={checkedItems.has(item.nom.toLowerCase())}
+            onToggle={() => onToggleChecked(item.nom.toLowerCase())}
+            borderColor={isOrphan ? 'border-orange-200' : 'border-gray-300'}
+          />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 // ---- Page Planning ----
 function Planning() {
   const { plats } = usePlats()
-  const { magasins, magasinActif, getRayon } = useMagasinContext()
+  const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
   const {
     semaine, espacesLibres,
     setMidi, setSoir,
-    ajouterIngredientLibre, supprimerIngredientLibre,
+    ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
     toggleExclu, setOverride, addExtra, removeExtra,
     resetPlanning,
   } = usePlanningContext()
@@ -278,6 +299,7 @@ function Planning() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [openSlots, setOpenSlots] = useState({})
   const [checkedItems, setCheckedItems] = useState(() => new Set())
+  const [activeItem, setActiveItem] = useState(null)
 
   const [formsLibres, setFormsLibres] = useState({
     petitDejeuner: { nom: '', quantite: '', unite: 'g' },
@@ -285,7 +307,11 @@ function Planning() {
     alicya: { nom: '', quantite: '', unite: 'g' },
   })
 
-  // Catalogue global pour l'autocomplétion
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+  )
+
   const ingredientSuggestions = useMemo(() => {
     const seen = new Set()
     plats.forEach(p => p.ingredients.forEach(i => seen.add(i.nom)))
@@ -306,19 +332,13 @@ function Planning() {
   }
 
   function setFormLibre(bloc, field, value) {
-    setFormsLibres(prev => ({
-      ...prev,
-      [bloc]: { ...prev[bloc], [field]: value },
-    }))
+    setFormsLibres(prev => ({ ...prev, [bloc]: { ...prev[bloc], [field]: value } }))
   }
 
   function handleAjouterLibre(e, bloc) {
     e.preventDefault()
     ajouterIngredientLibre(bloc, formsLibres[bloc])
-    setFormsLibres(prev => ({
-      ...prev,
-      [bloc]: { nom: '', quantite: '', unite: 'g' },
-    }))
+    setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'g' } }))
   }
 
   function handleReset() {
@@ -332,7 +352,22 @@ function Planning() {
     }
   }
 
-  // ---- Calcul liste de courses (avec deltas) ----
+  // ---- DnD handlers ----
+  function handleDragStart({ active }) {
+    setActiveItem(active.data.current)
+  }
+
+  function handleDragEnd({ active, over }) {
+    setActiveItem(null)
+    if (!over) return
+    const ingNom = active.id.replace(/^ing:/, '')
+    if (over.id.startsWith('rayon:')) {
+      const newRayon = over.id.slice(6) // '' means unclassified
+      setRayon(ingNom, newRayon)
+    }
+  }
+
+  // ---- Calcul liste de courses ----
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsOrdonnes = magasinCourant?.rayons.map(r => r.nom) ?? []
 
@@ -345,7 +380,6 @@ function Planning() {
       if (!platId) continue
       const plat = plats.find(p => p.id === platId)
       if (!plat) continue
-
       for (const ing of plat.ingredients) {
         if (delta.excluded.includes(ing.id)) continue
         const key = ing.nom.toLowerCase()
@@ -354,7 +388,6 @@ function Planning() {
         if (!ingredientsMap[key]) ingredientsMap[key] = { nom: ing.nom, quantite: 0, unite: uniteActuelle }
         ingredientsMap[key].quantite += qteActuelle
       }
-
       for (const extra of delta.extras) {
         const key = extra.nom.toLowerCase()
         if (!ingredientsMap[key]) ingredientsMap[key] = { nom: extra.nom, quantite: 0, unite: extra.unite }
@@ -362,7 +395,6 @@ function Planning() {
       }
     }
   }
-
   for (const { key } of BLOCS_LIBRES) {
     for (const ing of espacesLibres[key]) {
       const mapKey = ing.nom.toLowerCase()
@@ -382,31 +414,26 @@ function Planning() {
       orphelins.push(item)
     }
   }
-
   const totalIngredients = Object.values(ingredientsMap).length
 
-  // ---- Helper pour afficher le bouton de toggle d'un slot ----
+  // ---- Helper slot toggle ----
   function renderSlotToggle(jour, idx, repas) {
     const platId = jour[repas]
     if (!platId) return null
     const plat = plats.find(p => p.id === platId)
     if (!plat) return null
     const delta = jour[`${repas}Delta`] ?? { excluded: [], overrides: {}, extras: [] }
-    const nbExclus = delta.excluded.length
-    const nbExtras = delta.extras.length
-    const isModified = nbExclus > 0 || nbExtras > 0 || Object.keys(delta.overrides).length > 0
+    const isModified = delta.excluded.length > 0 || delta.extras.length > 0 || Object.keys(delta.overrides).length > 0
     const slotKey = `${idx}-${repas}`
     const isOpen = !!openSlots[slotKey]
-    const nbEffectifs = plat.ingredients.length - nbExclus + nbExtras
+    const nbEffectifs = plat.ingredients.length - delta.excluded.length + delta.extras.length
 
     return (
       <>
         <button
           type="button"
           onClick={() => toggleSlot(slotKey)}
-          className={`mt-1 flex items-center gap-1 text-[10px] font-medium transition-colors ${
-            isModified ? 'text-orange-500 hover:text-orange-600' : 'text-gray-400 hover:text-gray-500'
-          }`}
+          className={`mt-1 flex items-center gap-1 text-[10px] font-medium transition-colors ${isModified ? 'text-orange-500 hover:text-orange-600' : 'text-gray-400 hover:text-gray-500'}`}
         >
           {isOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           {nbEffectifs} ingr.{isModified && ' · modifié'}
@@ -426,70 +453,29 @@ function Planning() {
     )
   }
 
-  // ---- Helper pour rendre un item de la liste de courses ----
-  function renderShoppingItem(item, borderColor = 'border-gray-300') {
-    const key = item.nom.toLowerCase()
-    const isChecked = checkedItems.has(key)
-    return (
-      <li
-        key={item.nom}
-        onClick={() => toggleChecked(key)}
-        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer select-none transition-colors hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''}`}
-      >
-        <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${
-          isChecked ? 'border-green-500 bg-green-500' : borderColor
-        }`}>
-          {isChecked && <Check size={10} className="text-white" />}
-        </span>
-        <span className={`flex-1 text-sm font-medium transition-colors ${isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-          {item.nom}
-        </span>
-        <span className={`text-sm tabular-nums transition-colors ${isChecked ? 'text-gray-300' : 'text-gray-400'}`}>
-          {item.quantite > 0 ? `${item.quantite} ${item.unite}` : item.unite}
-        </span>
-      </li>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-6xl mx-auto px-4 py-6 md:grid md:grid-cols-5 md:gap-6 md:items-start">
 
-        {/* ===== COLONNE GAUCHE : ÉDITEUR ===== */}
+        {/* ===== COLONNE GAUCHE ===== */}
         <div className="md:col-span-3 space-y-6">
 
           {/* La Semaine */}
           <section>
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-              La Semaine
-            </h2>
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">La Semaine</h2>
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
               {semaine.map((jour, idx) => (
                 <div key={jour.jour} className="flex items-start gap-2 px-4 py-2.5">
-                  <span className="w-24 text-sm font-semibold text-gray-700 shrink-0 pt-1.5">
-                    {jour.jour}
-                  </span>
+                  <span className="w-24 text-sm font-semibold text-gray-700 shrink-0 pt-1.5">{jour.jour}</span>
                   <div className="flex flex-1 gap-2">
                     <div className="flex-1">
-                      <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">
-                        Midi
-                      </label>
-                      <PlatCombobox
-                        value={jour.midi}
-                        onChange={platId => setMidi(idx, platId)}
-                        plats={plats}
-                      />
+                      <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">Midi</label>
+                      <PlatCombobox value={jour.midi} onChange={platId => setMidi(idx, platId)} plats={plats} />
                       {renderSlotToggle(jour, idx, 'midi')}
                     </div>
                     <div className="flex-1">
-                      <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">
-                        Soir
-                      </label>
-                      <PlatCombobox
-                        value={jour.soir}
-                        onChange={platId => setSoir(idx, platId)}
-                        plats={plats}
-                      />
+                      <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">Soir</label>
+                      <PlatCombobox value={jour.soir} onChange={platId => setSoir(idx, platId)} plats={plats} />
                       {renderSlotToggle(jour, idx, 'soir')}
                     </div>
                   </div>
@@ -500,9 +486,7 @@ function Planning() {
 
           {/* Les Espaces Libres */}
           <section>
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-              Les Espaces Libres
-            </h2>
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Les Espaces Libres</h2>
             <div className="space-y-4">
               {BLOCS_LIBRES.map(({ key, label }) => (
                 <div key={key} className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -513,20 +497,24 @@ function Planning() {
                     {espacesLibres[key].length > 0 ? (
                       <ul className="space-y-1.5">
                         {espacesLibres[key].map(ing => (
-                          <li
-                            key={ing.id}
-                            className="flex items-center gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
-                          >
-                            <span className="flex-1 min-w-0">
-                              <span className="font-medium">{ing.nom}</span>
-                              {ing.quantite > 0 && (
-                                <span className="text-gray-400 ml-2">{ing.quantite} {ing.unite}</span>
-                              )}
-                            </span>
+                          <li key={ing.id} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-3 py-1.5">
+                            <span className="flex-1 font-medium text-gray-800 truncate min-w-0">{ing.nom}</span>
+                            <input
+                              type="number" min="0" step="any"
+                              value={ing.quantite}
+                              onChange={e => updateIngredientLibre(key, ing.id, e.target.value, ing.unite)}
+                              className="w-14 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-green-500"
+                            />
+                            <select
+                              value={ing.unite}
+                              onChange={e => updateIngredientLibre(key, ing.id, ing.quantite, e.target.value)}
+                              className="rounded border border-gray-200 bg-white px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
                             <button
                               onClick={() => supprimerIngredientLibre(key, ing.id)}
                               className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
-                              aria-label={`Supprimer ${ing.nom}`}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -536,7 +524,6 @@ function Planning() {
                     ) : (
                       <p className="text-xs text-gray-400 italic">Aucun ingrédient ajouté.</p>
                     )}
-
                     <form onSubmit={e => handleAjouterLibre(e, key)} className="flex flex-wrap gap-2 pt-1">
                       <IngredientCombobox
                         value={formsLibres[key].nom}
@@ -546,27 +533,21 @@ function Planning() {
                         className="flex-1 min-w-28"
                       />
                       <input
-                        type="number"
-                        min="0"
-                        step="any"
+                        type="number" min="0" step="any"
                         value={formsLibres[key].quantite}
                         onChange={e => setFormLibre(key, 'quantite', e.target.value)}
                         placeholder="Qté"
-                        className="w-20 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="w-20 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                       <select
                         value={formsLibres[key].unite}
                         onChange={e => setFormLibre(key, 'unite', e.target.value)}
-                        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                       >
                         {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
-                      <button
-                        type="submit"
-                        className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all"
-                      >
-                        <Plus size={14} />
-                        Ajouter
+                      <button type="submit" className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
+                        <Plus size={14} />Ajouter
                       </button>
                     </form>
                   </div>
@@ -575,89 +556,84 @@ function Planning() {
             </div>
           </section>
 
-          {/* Bouton Reset */}
+          {/* Reset */}
           <div className="flex items-center gap-3">
             {confirmReset ? (
               <>
                 <span className="text-sm text-gray-600">Réinitialiser le planning ?</span>
-                <button
-                  onClick={handleReset}
-                  className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
-                >
-                  Confirmer
-                </button>
-                <button
-                  onClick={() => setConfirmReset(false)}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-100 transition-colors"
-                >
-                  Annuler
-                </button>
+                <button onClick={handleReset} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">Confirmer</button>
+                <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-100 transition-colors">Annuler</button>
               </>
             ) : (
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 hover:text-gray-700 transition-colors"
-              >
-                <RotateCcw size={14} />
-                Réinitialiser le planning
+              <button onClick={handleReset} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 hover:text-gray-700 transition-colors">
+                <RotateCcw size={14} />Réinitialiser le planning
               </button>
             )}
           </div>
-
         </div>
 
         {/* ===== COLONNE DROITE : LISTE DE COURSES ===== */}
         <div className="mt-6 md:mt-0 md:col-span-2 md:sticky md:top-4">
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
             Liste de courses
-            {totalIngredients > 0 && (
-              <span className="ml-2 text-gray-300 font-normal normal-case">
-                ({totalIngredients} ingr.)
-              </span>
-            )}
+            {totalIngredients > 0 && <span className="ml-2 text-gray-300 font-normal normal-case">({totalIngredients} ingr.)</span>}
           </h2>
+          {totalIngredients > 0 && (
+            <p className="text-[10px] text-gray-400 mb-3">Glissez un ingrédient vers un rayon pour le reclasser.</p>
+          )}
 
           {totalIngredients === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gray-300 bg-white rounded-xl shadow-sm border border-gray-100">
               <ShoppingCart size={36} className="mb-3" />
-              <p className="text-sm text-center leading-relaxed">
-                Sélectionnez des plats<br />ou ajoutez des ingrédients libres.
-              </p>
+              <p className="text-sm text-center leading-relaxed">Sélectionnez des plats<br />ou ajoutez des ingrédients libres.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {rayonsOrdonnes.map(rayonNom => {
-                const items = grouped[rayonNom]
-                if (!items || items.length === 0) return null
-                return (
-                  <section key={rayonNom}>
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
-                      {rayonNom}
-                      <span className="ml-2 text-gray-300 font-normal normal-case">({items.length})</span>
-                    </h3>
-                    <ul className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
-                      {items.map(item => renderShoppingItem(item, 'border-gray-300'))}
-                    </ul>
-                  </section>
-                )
-              })}
+            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+              <div className="space-y-4">
+                {rayonsOrdonnes.map(rayonNom => {
+                  const items = grouped[rayonNom]
+                  if (!items || items.length === 0) return null
+                  return (
+                    <DroppableRayon
+                      key={rayonNom}
+                      rayonId={rayonNom}
+                      label={rayonNom}
+                      items={items}
+                      checkedItems={checkedItems}
+                      onToggleChecked={toggleChecked}
+                    />
+                  )
+                })}
 
-              {orphelins.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <Package size={13} />
-                    Autres / Non classés
-                    <span className="text-gray-300 font-normal normal-case">({orphelins.length})</span>
-                  </h3>
-                  <ul className="bg-white rounded-xl shadow-sm border border-orange-100 divide-y divide-gray-50">
-                    {orphelins.map(item => renderShoppingItem(item, 'border-orange-200'))}
-                  </ul>
-                  <p className="text-xs text-gray-400 mt-2 text-center">
-                    Assignez un rayon dans Paramètres → Catalogue
-                  </p>
-                </section>
-              )}
-            </div>
+                {orphelins.length > 0 && (
+                  <>
+                    <DroppableRayon
+                      rayonId=""
+                      label="Autres / Non classés"
+                      items={orphelins}
+                      checkedItems={checkedItems}
+                      onToggleChecked={toggleChecked}
+                      isOrphan
+                    />
+                    <p className="text-xs text-gray-400 text-center">
+                      Assignez un rayon dans Paramètres → Catalogue, ou glissez l&apos;ingrédient sur un rayon.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              <DragOverlay>
+                {activeItem && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 bg-white border border-green-400 rounded-xl shadow-xl text-sm pointer-events-none">
+                    <GripVertical size={14} className="text-gray-400 shrink-0" />
+                    <span className="font-medium text-gray-800 flex-1">{activeItem.nom}</span>
+                    <span className="text-gray-400 tabular-nums">
+                      {activeItem.quantite > 0 ? `${activeItem.quantite} ${activeItem.unite}` : activeItem.unite}
+                    </span>
+                  </div>
+                )}
+              </DragOverlay>
+            </DndContext>
           )}
         </div>
 
