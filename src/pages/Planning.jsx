@@ -25,9 +25,10 @@ function PlatCombobox({ value, onChange, plats }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const selectedPlat = plats.find(p => p.id === value)
-  const filtered = query.trim()
+  const filtered = (query.trim()
     ? plats.filter(p => p.nom.toLowerCase().includes(query.toLowerCase()))
-    : plats
+    : [...plats]
+  ).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
 
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -230,17 +231,10 @@ function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
       ref={setNodeRef}
       style={style}
       onClick={onToggle}
-      className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none transition-all hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+      {...listeners}
+      {...attributes}
+      className={`flex items-center gap-2 px-3 py-2.5 cursor-grab active:cursor-grabbing select-none transition-all hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
     >
-      {/* Drag handle */}
-      <span
-        onClick={e => e.stopPropagation()}
-        {...listeners}
-        {...attributes}
-        className="text-gray-200 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 touch-none"
-      >
-        <GripVertical size={14} />
-      </span>
       {/* Checkbox */}
       <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isChecked ? 'border-green-500 bg-green-500' : borderColor}`}>
         {isChecked && <Check size={10} className="text-white" />}
@@ -259,27 +253,34 @@ function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
 function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, isOrphan = false }) {
   const { setNodeRef, isOver } = useDroppable({ id: `rayon:${rayonId}` })
   const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+  const isEmpty = items.length === 0
   const borderClass = isOrphan ? 'border-orange-100' : 'border-gray-100'
 
   return (
     <section ref={setNodeRef} className={`rounded-xl transition-all ${isOver ? 'ring-2 ring-green-400 ring-offset-1' : ''}`}>
-      <h3 className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isOver ? 'text-green-600' : 'text-gray-400'}`}>
+      <h3 className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isOver ? 'text-green-600' : isEmpty ? 'text-gray-300' : 'text-gray-400'}`}>
         {isOrphan && <Package size={13} />}
         {label}
-        <span className="text-gray-300 font-normal normal-case">({items.length})</span>
+        <span className="font-normal normal-case opacity-60">({items.length})</span>
         {isOver && <span className="text-green-500 font-normal normal-case text-[10px]">← déposer ici</span>}
       </h3>
-      <ul className={`bg-white rounded-xl shadow-sm border divide-y divide-gray-50 transition-colors ${isOver ? 'border-green-300' : borderClass}`}>
-        {sorted.map(item => (
-          <DraggableIngredient
-            key={item.nom}
-            item={item}
-            isChecked={checkedItems.has(item.nom.toLowerCase())}
-            onToggle={() => onToggleChecked(item.nom.toLowerCase())}
-            borderColor={isOrphan ? 'border-orange-200' : 'border-gray-300'}
-          />
-        ))}
-      </ul>
+      {isEmpty ? (
+        <div className={`rounded-xl border-2 border-dashed px-4 py-3 text-center text-xs italic transition-colors ${isOver ? 'border-green-300 text-green-400 bg-green-50' : 'border-gray-200 text-gray-300'}`}>
+          Aucun ingrédient
+        </div>
+      ) : (
+        <ul className={`bg-white rounded-xl shadow-sm border divide-y divide-gray-50 transition-colors ${isOver ? 'border-green-300' : borderClass}`}>
+          {sorted.map(item => (
+            <DraggableIngredient
+              key={item.nom}
+              item={item}
+              isChecked={checkedItems.has(item.nom.toLowerCase())}
+              onToggle={() => onToggleChecked(item.nom.toLowerCase())}
+              borderColor={isOrphan ? 'border-orange-200' : 'border-gray-300'}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
@@ -302,9 +303,9 @@ function Planning() {
   const [activeItem, setActiveItem] = useState(null)
 
   const [formsLibres, setFormsLibres] = useState({
-    petitDejeuner: { nom: '', quantite: '', unite: 'g' },
-    achatsPonctuels: { nom: '', quantite: '', unite: 'g' },
-    alicya: { nom: '', quantite: '', unite: 'g' },
+    petitDejeuner: { nom: '', quantite: '', unite: 'g', platId: null },
+    achatsPonctuels: { nom: '', quantite: '', unite: 'g', platId: null },
+    alicya: { nom: '', quantite: '', unite: 'g', platId: null },
   })
 
   const sensors = useSensors(
@@ -319,6 +320,13 @@ function Planning() {
     return [...seen].sort((a, b) => a.localeCompare(b, 'fr'))
   }, [plats, espacesLibres])
 
+  // Suggestions mixtes pour les Espaces Libres : ingrédients + noms de plats
+  const libresComboSuggestions = useMemo(() => {
+    const names = new Set(ingredientSuggestions)
+    plats.forEach(p => names.add(p.nom))
+    return [...names].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [ingredientSuggestions, plats])
+
   function toggleSlot(key) {
     setOpenSlots(prev => ({ ...prev, [key]: !prev[key] }))
   }
@@ -332,13 +340,18 @@ function Planning() {
   }
 
   function setFormLibre(bloc, field, value) {
-    setFormsLibres(prev => ({ ...prev, [bloc]: { ...prev[bloc], [field]: value } }))
+    if (field === 'nom') {
+      const matchingPlat = plats.find(p => p.nom === value)
+      setFormsLibres(prev => ({ ...prev, [bloc]: { ...prev[bloc], nom: value, platId: matchingPlat?.id ?? null } }))
+    } else {
+      setFormsLibres(prev => ({ ...prev, [bloc]: { ...prev[bloc], [field]: value } }))
+    }
   }
 
   function handleAjouterLibre(e, bloc) {
     e.preventDefault()
     ajouterIngredientLibre(bloc, formsLibres[bloc])
-    setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'g' } }))
+    setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'g', platId: null } }))
   }
 
   function handleReset() {
@@ -397,9 +410,21 @@ function Planning() {
   }
   for (const { key } of BLOCS_LIBRES) {
     for (const ing of espacesLibres[key]) {
-      const mapKey = ing.nom.toLowerCase()
-      if (!ingredientsMap[mapKey]) ingredientsMap[mapKey] = { nom: ing.nom, quantite: 0, unite: ing.unite }
-      ingredientsMap[mapKey].quantite += Number(ing.quantite) || 0
+      if (ing.platId) {
+        const plat = plats.find(p => p.id === ing.platId)
+        if (plat) {
+          const multiplier = Number(ing.quantite) || 1
+          for (const platIng of plat.ingredients) {
+            const mapKey = platIng.nom.toLowerCase()
+            if (!ingredientsMap[mapKey]) ingredientsMap[mapKey] = { nom: platIng.nom, quantite: 0, unite: platIng.unite }
+            ingredientsMap[mapKey].quantite += Number(platIng.quantite) * multiplier
+          }
+        }
+      } else {
+        const mapKey = ing.nom.toLowerCase()
+        if (!ingredientsMap[mapKey]) ingredientsMap[mapKey] = { nom: ing.nom, quantite: 0, unite: ing.unite }
+        ingredientsMap[mapKey].quantite += Number(ing.quantite) || 0
+      }
     }
   }
 
@@ -528,8 +553,8 @@ function Planning() {
                       <IngredientCombobox
                         value={formsLibres[key].nom}
                         onChange={nom => setFormLibre(key, 'nom', nom)}
-                        suggestions={ingredientSuggestions}
-                        placeholder="Ingrédient"
+                        suggestions={libresComboSuggestions}
+                        placeholder="Ingrédient ou plat"
                         className="flex-1 min-w-28"
                       />
                       <input
@@ -582,7 +607,7 @@ function Planning() {
             <p className="text-[10px] text-gray-400 mb-3">Glissez un ingrédient vers un rayon pour le reclasser.</p>
           )}
 
-          {totalIngredients === 0 ? (
+          {rayonsOrdonnes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gray-300 bg-white rounded-xl shadow-sm border border-gray-100">
               <ShoppingCart size={36} className="mb-3" />
               <p className="text-sm text-center leading-relaxed">Sélectionnez des plats<br />ou ajoutez des ingrédients libres.</p>
@@ -590,20 +615,16 @@ function Planning() {
           ) : (
             <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
               <div className="space-y-4">
-                {rayonsOrdonnes.map(rayonNom => {
-                  const items = grouped[rayonNom]
-                  if (!items || items.length === 0) return null
-                  return (
-                    <DroppableRayon
-                      key={rayonNom}
-                      rayonId={rayonNom}
-                      label={rayonNom}
-                      items={items}
-                      checkedItems={checkedItems}
-                      onToggleChecked={toggleChecked}
-                    />
-                  )
-                })}
+                {rayonsOrdonnes.map(rayonNom => (
+                  <DroppableRayon
+                    key={rayonNom}
+                    rayonId={rayonNom}
+                    label={rayonNom}
+                    items={grouped[rayonNom] ?? []}
+                    checkedItems={checkedItems}
+                    onToggleChecked={toggleChecked}
+                  />
+                ))}
 
                 {orphelins.length > 0 && (
                   <>

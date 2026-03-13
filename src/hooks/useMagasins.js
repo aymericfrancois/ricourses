@@ -92,5 +92,11 @@ export function useMagasins() {
     )
   }
 
-  return { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon }
+  function reorderRayons(magasinId, newRayons) {
+    setMagasins(prev =>
+      prev.map(m => m.id !== magasinId ? m : { ...m, rayons: newRayons })
+    )
+  }
+
+  return { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons }
 }

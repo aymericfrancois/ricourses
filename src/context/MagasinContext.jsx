@@ -43,7 +43,7 @@ function loadMagasinActif(magasins) {
 const MagasinContext = createContext(null)
 
 export function MagasinProvider({ children }) {
-  const { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon } = useMagasins()
+  const { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
 
   const [magasinActif, setMagasinActifState] = useState(() => loadMagasinActif(magasins))
   const [rayonsParMagasin, setRayonsParMagasin] = useState(() => loadRayons(magasins))
@@ -77,11 +77,29 @@ export function MagasinProvider({ children }) {
     }))
   }
 
+  function renommerIngredientDansRayons(ancienNom, nouveauNom) {
+    const ancienKey = ancienNom.toLowerCase()
+    const nouveauKey = nouveauNom.toLowerCase()
+    if (ancienKey === nouveauKey) return
+    setRayonsParMagasin(prev => {
+      const result = {}
+      for (const [magasin, mapping] of Object.entries(prev)) {
+        if (mapping[ancienKey] !== undefined) {
+          const { [ancienKey]: rayon, ...rest } = mapping
+          result[magasin] = { ...rest, [nouveauKey]: rayon }
+        } else {
+          result[magasin] = mapping
+        }
+      }
+      return result
+    })
+  }
+
   return (
     <MagasinContext.Provider value={{
-      magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon,
+      magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
       magasinActif, setMagasinActif,
-      rayonsParMagasin, getRayon, setRayon,
+      rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons,
     }}>
       {children}
     </MagasinContext.Provider>

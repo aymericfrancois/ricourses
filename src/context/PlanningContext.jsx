@@ -87,6 +87,7 @@ function reducer(state, action) {
               nom: action.nom.trim(),
               quantite: Number(action.quantite),
               unite: action.unite,
+              ...(action.platId ? { platId: action.platId } : {}),
             },
           ],
         },
@@ -175,9 +176,9 @@ export function PlanningProvider({ children }) {
   function setSoir(jourIdx, platId) {
     dispatch({ type: 'SET_SOIR', jourIdx, platId: platId || null })
   }
-  function ajouterIngredientLibre(bloc, { nom, quantite, unite }) {
+  function ajouterIngredientLibre(bloc, { nom, quantite, unite, platId }) {
     if (!nom.trim()) return
-    dispatch({ type: 'AJOUTER_INGREDIENT_LIBRE', bloc, nom, quantite, unite })
+    dispatch({ type: 'AJOUTER_INGREDIENT_LIBRE', bloc, nom, quantite, unite, platId: platId ?? null })
   }
   function supprimerIngredientLibre(bloc, id) {
     dispatch({ type: 'SUPPRIMER_INGREDIENT_LIBRE', bloc, id })
