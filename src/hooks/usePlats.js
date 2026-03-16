@@ -112,6 +112,14 @@ export function usePlats() {
     })))
   }
 
+  function supprimerIngredientDePlats(nom) {
+    const key = nom.toLowerCase()
+    setPlats(prev => prev.map(plat => ({
+      ...plat,
+      ingredients: plat.ingredients.filter(i => i.nom.toLowerCase() !== key),
+    })))
+  }
+
   function renommerPlat(platId, nouveauNom) {
     const trimmed = nouveauNom.trim()
     if (!trimmed) return
@@ -131,5 +139,5 @@ export function usePlats() {
     )
   }
 
-  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, updatePlatCategorie, ajouterIngredient, supprimerIngredient, renommerIngredient, renommerPlat, updateIngredient }
+  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, updatePlatCategorie, ajouterIngredient, supprimerIngredient, renommerIngredient, renommerPlat, updateIngredient, supprimerIngredientDePlats }
 }

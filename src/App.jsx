@@ -15,9 +15,11 @@ function App() {
           <Header />
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/parametres" element={<Parametres />} />
-            <Route path="/liste" element={<ListeCourses />} />
             <Route path="/planning" element={<Planning />} />
+            <Route path="/liste" element={<ListeCourses />} />
+            <Route path="/plats" element={<Parametres />} />
+            <Route path="/rayons" element={<Parametres />} />
+            <Route path="/ingredients" element={<Parametres />} />
           </Routes>
         </PlanningProvider>
       </MagasinProvider>

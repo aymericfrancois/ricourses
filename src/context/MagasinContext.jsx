@@ -95,11 +95,23 @@ export function MagasinProvider({ children }) {
     })
   }
 
+  function supprimerIngredientDansRayons(nom) {
+    const key = nom.toLowerCase()
+    setRayonsParMagasin(prev => {
+      const result = {}
+      for (const [magasin, mapping] of Object.entries(prev)) {
+        const { [key]: _, ...rest } = mapping
+        result[magasin] = rest
+      }
+      return result
+    })
+  }
+
   return (
     <MagasinContext.Provider value={{
       magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
       magasinActif, setMagasinActif,
-      rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons,
+      rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
     }}>
       {children}
     </MagasinContext.Provider>

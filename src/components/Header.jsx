@@ -1,5 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
-import { CalendarDays, Settings, ScanLine } from 'lucide-react'
+import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf } from 'lucide-react'
 import { useMagasinContext } from '../context/MagasinContext'
 
 const navLinkClass = ({ isActive }) =>
@@ -15,15 +15,10 @@ function Header() {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-20">
       <div className="max-w-6xl mx-auto px-4">
-
-        {/* Ligne unique — flex-wrap pour mobile */}
         <div className="flex items-center gap-3 py-3 flex-wrap">
 
           {/* Logo */}
-          <Link
-            to="/"
-            className="text-lg font-bold text-green-600 shrink-0 mr-2"
-          >
+          <Link to="/" className="text-lg font-bold text-green-600 shrink-0 mr-2">
             Ricourses
           </Link>
 
@@ -33,10 +28,6 @@ function Header() {
               <CalendarDays size={15} />
               <span>Planning</span>
             </NavLink>
-            <NavLink to="/parametres" className={navLinkClass}>
-              <Settings size={15} />
-              <span>Paramètres</span>
-            </NavLink>
             <button
               disabled
               title="Bientôt disponible"
@@ -45,6 +36,18 @@ function Header() {
               <ScanLine size={15} />
               <span>Scanner</span>
             </button>
+            <NavLink to="/plats" className={navLinkClass}>
+              <UtensilsCrossed size={15} />
+              <span>Plats</span>
+            </NavLink>
+            <NavLink to="/rayons" className={navLinkClass}>
+              <LayoutList size={15} />
+              <span>Rayons</span>
+            </NavLink>
+            <NavLink to="/ingredients" className={navLinkClass}>
+              <Leaf size={15} />
+              <span>Ingrédients</span>
+            </NavLink>
           </nav>
 
           {/* Sélecteur de magasin */}
