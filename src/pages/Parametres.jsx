@@ -1,6 +1,10 @@
 import { useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { DndContext, PointerSensor, TouchSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core'
+import {
+  DndContext, DragOverlay,
+  PointerSensor, TouchSensor, useSensor, useSensors,
+  useDraggable, useDroppable,
+} from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, Trash2, ChevronDown, Pencil, X, Check, Store, GripVertical, Search,
@@ -45,7 +49,7 @@ function DraggablePlatCard({ plat, isSelected, onSelect }) {
       {...attributes}
       onClick={() => onSelect(plat.id)}
       className={`flex items-center gap-2 px-3 py-2 rounded-xl border bg-white shadow-sm cursor-grab active:cursor-grabbing select-none transition-all ${
-        isDragging ? 'opacity-40 shadow-md z-10 relative' : ''
+        isDragging ? 'opacity-50 shadow-md z-10 relative' : ''
       } ${
         isSelected
           ? 'border-green-400 ring-2 ring-green-100 bg-green-50'
@@ -96,7 +100,20 @@ function DroppableCategorie({ categorie, plats, selectedPlatId, onSelectPlat }) 
   )
 }
 
-// ---- Tag ingrédient : draggable + renommage inline ----
+// ---- Tag ingrédient (affichage pur, sans DnD) ----
+function IngredientTagInner({ nom, isAssigned }) {
+  return (
+    <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border shadow-sm ${
+      isAssigned
+        ? 'bg-white border-gray-200 text-gray-700'
+        : 'bg-orange-50 border-orange-200 text-orange-600'
+    }`}>
+      <span className="truncate max-w-28">{nom}</span>
+    </div>
+  )
+}
+
+// ---- Tag ingrédient draggable + actions ----
 function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
   const [isRenaming, setIsRenaming] = useState(false)
   const [newNom, setNewNom] = useState(nom)
@@ -142,10 +159,10 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       {...listeners}
       {...attributes}
       className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
-        isDragging ? 'opacity-40' : ''
+        isDragging ? 'opacity-50' : ''
       } ${
         isAssigned
-          ? 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+          ? 'bg-white border-gray-200 text-gray-700'
           : 'bg-orange-50 border-orange-200 text-orange-600'
       }`}
     >
@@ -154,7 +171,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
         type="button"
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); setIsRenaming(true); setNewNom(nom) }}
-        className="text-gray-300 hover:text-green-600 transition-colors shrink-0 ml-0.5"
+        className="text-green-500 hover:text-green-700 transition-colors shrink-0 ml-0.5"
         aria-label={`Renommer ${nom}`}
       >
         <Pencil size={9} />
@@ -162,8 +179,13 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       <button
         type="button"
         onPointerDown={e => e.stopPropagation()}
-        onClick={e => { e.stopPropagation(); onDelete() }}
-        className="text-gray-200 hover:text-red-500 transition-colors shrink-0"
+        onClick={e => {
+          e.stopPropagation()
+          if (window.confirm(`Supprimer l'ingrédient "${nom}" ?\n\nAttention : il sera retiré de toutes les recettes dans lesquelles il apparaît.`)) {
+            onDelete()
+          }
+        }}
+        className="text-red-400 hover:text-red-600 transition-colors shrink-0"
         aria-label={`Supprimer ${nom}`}
       >
         <X size={10} />
@@ -307,10 +329,10 @@ function Parametres() {
     magasins, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
     magasinActif, setMagasinActif, getRayon, setRayon,
     renommerIngredientDansRayons, supprimerIngredientDansRayons,
+    standaloneIngredients, ajouterIngredientStandalone,
   } = useMagasinContext()
   const { espacesLibres } = usePlanningContext()
 
-  // Tab déterminé par l'URL
   const { pathname } = useLocation()
   const activeTab = pathname.endsWith('/rayons') ? 'rayons'
     : pathname.endsWith('/ingredients') ? 'ingredients'
@@ -319,7 +341,6 @@ function Parametres() {
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsActifs = magasinCourant?.rayons.map(r => r.nom) ?? []
 
-  // Regroupement des plats par catégorie
   const byCategorie = {}
   for (const plat of plats) {
     const cat = plat.categorie ?? 'Autres'
@@ -332,19 +353,17 @@ function Parametres() {
   const [categorieNouveauPlat, setCategorieNouveauPlat] = useState('PÂTES')
   const [ingredientForms, setIngredientForms] = useState({})
   const [selectedPlatId, setSelectedPlatId] = useState(null)
-
-  // Édition nom du plat
   const [editPlatNomId, setEditPlatNomId] = useState(null)
   const [editPlatNomValue, setEditPlatNomValue] = useState('')
   const editPlatNomSubmittedRef = useRef(false)
-
-  // Édition ingrédient (qty/unite)
   const [editIngId, setEditIngId] = useState(null)
   const [editIngValues, setEditIngValues] = useState({ quantite: '', unite: 'g' })
 
   // --- État onglet Ingrédients ---
   const [searchIngredients, setSearchIngredients] = useState('')
-  const [ingDragging, setIngDragging] = useState(false)
+  const [activeIngId, setActiveIngId] = useState(null) // drag overlay + condensed mode
+  const [nomNouvelIng, setNomNouvelIng] = useState('')
+  const [rayonNouvelIng, setRayonNouvelIng] = useState('')
 
   // --- État onglet Rayons ---
   const [nouveauRayon, setNouveauRayon] = useState('')
@@ -414,8 +433,7 @@ function Parametres() {
     if (!over) return
     const targetId = String(over.id)
     if (!targetId.startsWith('categorie:')) return
-    const targetCat = targetId.slice('categorie:'.length)
-    updatePlatCategorie(String(active.id), targetCat)
+    updatePlatCategorie(String(active.id), targetId.slice('categorie:'.length))
   }
 
   // ---- Ingrédients : renommage + suppression ----
@@ -429,14 +447,25 @@ function Parametres() {
     supprimerIngredientDansRayons(nom)
   }
 
+  // ---- Ingrédients : ajout rapide ----
+  function handleAjouterIngredientStandalone(e) {
+    e.preventDefault()
+    ajouterIngredientStandalone(nomNouvelIng, rayonNouvelIng)
+    setNomNouvelIng('')
+    setRayonNouvelIng('')
+  }
+
   // ---- Ingrédients DnD ----
+  function handleIngredientDragStart({ active }) {
+    setActiveIngId(String(active.id))
+  }
+
   function handleIngredientDragEnd({ active, over }) {
-    setIngDragging(false)
+    setActiveIngId(null)
     if (!over) return
-    const ingNom = active.id
     if (!String(over.id).startsWith('section:')) return
     const targetRayon = String(over.id).slice('section:'.length)
-    setRayon(ingNom, targetRayon === '__unassigned__' ? '' : targetRayon)
+    setRayon(String(active.id), targetRayon === '__unassigned__' ? '' : targetRayon)
   }
 
   // ---- Rayons DnD ----
@@ -452,10 +481,6 @@ function Parametres() {
     reorderRayons(magasinCourant.id, newRayons)
   }
 
-  function handleSwitchMagasin(nom) {
-    setMagasinActif(nom)
-  }
-
   function handleAjouterRayon(e) {
     e.preventDefault()
     if (magasinCourant) ajouterRayon(magasinCourant.id, nouveauRayon)
@@ -463,6 +488,7 @@ function Parametres() {
   }
 
   const selectedPlat = plats.find(p => p.id === selectedPlatId)
+  const ingDragging = activeIngId !== null
 
   // ---- JSX : liste d'ingrédients d'un plat + form ----
   function renderIngredients(plat) {
@@ -476,14 +502,10 @@ function Parametres() {
                 className="flex items-center gap-1.5 text-sm text-gray-700 bg-gray-50 rounded-lg px-2.5 py-1.5 min-w-0"
               >
                 {editIngId === ing.id ? (
-                  /* Mode édition */
                   <>
                     <span className="font-medium min-w-0 flex-1 truncate text-xs">{ing.nom}</span>
                     <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      autoFocus
+                      type="number" min="0" step="any" autoFocus
                       value={editIngValues.quantite}
                       onChange={e => setEditIngValues(prev => ({ ...prev, quantite: e.target.value }))}
                       onKeyDown={e => {
@@ -507,23 +529,14 @@ function Parametres() {
                       <option value="">— rayon —</option>
                       {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <button
-                      onClick={() => confirmEditIng(plat.id)}
-                      className="p-0.5 text-green-600 hover:bg-green-50 rounded transition-colors shrink-0"
-                      aria-label="Confirmer"
-                    >
+                    <button onClick={() => confirmEditIng(plat.id)} className="p-0.5 text-green-600 hover:bg-green-50 rounded shrink-0" aria-label="Confirmer">
                       <Check size={13} />
                     </button>
-                    <button
-                      onClick={() => setEditIngId(null)}
-                      className="p-0.5 text-gray-300 hover:text-gray-500 rounded transition-colors shrink-0"
-                      aria-label="Annuler"
-                    >
+                    <button onClick={() => setEditIngId(null)} className="p-0.5 text-gray-300 hover:text-gray-500 rounded shrink-0" aria-label="Annuler">
                       <X size={13} />
                     </button>
                   </>
                 ) : (
-                  /* Mode affichage */
                   <>
                     <span className="font-medium min-w-0 flex-1 truncate">{ing.nom}</span>
                     <span className="text-gray-400 text-xs shrink-0 whitespace-nowrap">{ing.quantite} {ing.unite}</span>
@@ -535,18 +548,10 @@ function Parametres() {
                       <option value="">— rayon —</option>
                       {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <button
-                      onClick={() => startEditIng(ing)}
-                      className="p-0.5 text-gray-300 hover:text-green-600 transition-colors shrink-0"
-                      aria-label={`Modifier ${ing.nom}`}
-                    >
+                    <button onClick={() => startEditIng(ing)} className="p-0.5 text-gray-300 hover:text-green-600 transition-colors shrink-0" aria-label={`Modifier ${ing.nom}`}>
                       <Pencil size={11} />
                     </button>
-                    <button
-                      onClick={() => supprimerIngredient(plat.id, ing.id)}
-                      className="p-0.5 text-gray-300 hover:text-red-500 transition-colors shrink-0"
-                      aria-label={`Supprimer ${ing.nom}`}
-                    >
+                    <button onClick={() => supprimerIngredient(plat.id, ing.id)} className="p-0.5 text-gray-300 hover:text-red-500 transition-colors shrink-0" aria-label={`Supprimer ${ing.nom}`}>
                       <Trash2 size={12} />
                     </button>
                   </>
@@ -568,9 +573,7 @@ function Parametres() {
             required
           />
           <input
-            type="number"
-            min="0"
-            step="any"
+            type="number" min="0" step="any"
             value={getIngredientForm(plat.id).quantite}
             onChange={e => setIngredientField(plat.id, 'quantite', e.target.value)}
             placeholder="Qté"
@@ -584,12 +587,8 @@ function Parametres() {
           >
             {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
-          <button
-            type="submit"
-            className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all"
-          >
-            <Plus size={14} />
-            Ajouter
+          <button type="submit" className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
+            <Plus size={14} />Ajouter
           </button>
         </form>
       </div>
@@ -612,15 +611,8 @@ function Parametres() {
               value={editPlatNomValue}
               onChange={e => setEditPlatNomValue(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  editPlatNomSubmittedRef.current = true
-                  confirmEditPlatNom(plat.id)
-                }
-                if (e.key === 'Escape') {
-                  editPlatNomSubmittedRef.current = true
-                  setEditPlatNomId(null)
-                }
+                if (e.key === 'Enter') { e.preventDefault(); editPlatNomSubmittedRef.current = true; confirmEditPlatNom(plat.id) }
+                if (e.key === 'Escape') { editPlatNomSubmittedRef.current = true; setEditPlatNomId(null) }
               }}
               onBlur={() => {
                 if (editPlatNomSubmittedRef.current) { editPlatNomSubmittedRef.current = false; return }
@@ -631,34 +623,20 @@ function Parametres() {
           ) : (
             <>
               <h3 className="flex-1 text-base font-semibold text-gray-900 truncate">{plat.nom}</h3>
-              <button
-                onClick={() => startEditPlatNom(plat)}
-                className="p-1.5 text-gray-300 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors shrink-0"
-                aria-label="Renommer le plat"
-              >
+              <button onClick={() => startEditPlatNom(plat)} className="p-1.5 text-gray-300 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors shrink-0" aria-label="Renommer le plat">
                 <Pencil size={14} />
               </button>
             </>
           )}
 
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
-            CAT_COLORS[plat.categorie ?? 'Autres'] ?? 'text-gray-400'
-          } bg-gray-100`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${CAT_COLORS[plat.categorie ?? 'Autres'] ?? 'text-gray-400'} bg-gray-100`}>
             {plat.categorie ?? 'Autres'}
           </span>
-          <button
-            onClick={() => { supprimerPlat(plat.id); setSelectedPlatId(null) }}
-            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-            aria-label={`Supprimer ${plat.nom}`}
-          >
+          <button onClick={() => { supprimerPlat(plat.id); setSelectedPlatId(null) }} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0" aria-label={`Supprimer ${plat.nom}`}>
             <Trash2 size={15} />
           </button>
           {showClose && (
-            <button
-              onClick={() => setSelectedPlatId(null)}
-              className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
-              aria-label="Fermer"
-            >
+            <button onClick={() => setSelectedPlatId(null)} className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors shrink-0" aria-label="Fermer">
               <X size={15} />
             </button>
           )}
@@ -678,62 +656,36 @@ function Parametres() {
         {/* ===== ONGLET PLATS ===== */}
         {activeTab === 'plats' && (
           <div className="md:grid md:grid-cols-[1fr_360px] md:gap-8 md:items-start">
-
-            {/* Colonne gauche : form + catégories */}
             <div className="space-y-4">
-
-              {/* Form ajouter un plat */}
               <section>
-                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                  Ajouter un plat
-                </h2>
+                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ajouter un plat</h2>
                 <form onSubmit={handleAjouterPlat} className="flex flex-wrap gap-2">
                   <input
-                    type="text"
-                    value={nomPlat}
-                    onChange={e => setNomPlat(e.target.value)}
+                    type="text" value={nomPlat} onChange={e => setNomPlat(e.target.value)}
                     placeholder="Nom du plat (ex: Poulet rôti)"
                     className="flex-1 min-w-40 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                     required
                   />
-                  <select
-                    value={categorieNouveauPlat}
-                    onChange={e => setCategorieNouveauPlat(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  >
-                    {CATEGORIES_ORDER.map(c => (
-                      <option key={c} value={c}>{CAT_EMOJIS[c]} {c}</option>
-                    ))}
+                  <select value={categorieNouveauPlat} onChange={e => setCategorieNouveauPlat(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    {CATEGORIES_ORDER.map(c => <option key={c} value={c}>{CAT_EMOJIS[c]} {c}</option>)}
                   </select>
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all"
-                  >
-                    <Plus size={16} />
-                    Ajouter
+                  <button type="submit" className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
+                    <Plus size={16} />Ajouter
                   </button>
                 </form>
               </section>
 
-              {/* Catégories avec DnD */}
               <DndContext sensors={sensors} onDragEnd={handlePlatDragEnd}>
                 <div className="space-y-1">
                   {CATEGORIES_ORDER
                     .filter(cat => cat !== 'Autres' || byCategorie['Autres']?.length > 0)
                     .map(cat => (
-                      <DroppableCategorie
-                        key={cat}
-                        categorie={cat}
-                        plats={byCategorie[cat] ?? []}
-                        selectedPlatId={selectedPlatId}
-                        onSelectPlat={handleSelectPlat}
-                      />
+                      <DroppableCategorie key={cat} categorie={cat} plats={byCategorie[cat] ?? []} selectedPlatId={selectedPlatId} onSelectPlat={handleSelectPlat} />
                     ))
                   }
                 </div>
               </DndContext>
 
-              {/* Panneau d'édition — mobile uniquement */}
               {selectedPlat && (
                 <div className="md:hidden mt-2">
                   {renderEditPanel(selectedPlat, true)}
@@ -741,20 +693,14 @@ function Parametres() {
               )}
             </div>
 
-            {/* Colonne droite — desktop uniquement */}
             <div className="hidden md:block sticky top-20">
-              {selectedPlat ? (
-                renderEditPanel(selectedPlat)
-              ) : (
+              {selectedPlat ? renderEditPanel(selectedPlat) : (
                 <div className="flex flex-col items-center justify-center py-24 text-gray-300">
                   <ChevronDown size={36} className="mb-3" />
-                  <p className="text-sm text-center leading-relaxed">
-                    Cliquez sur un plat<br />pour modifier ses ingrédients
-                  </p>
+                  <p className="text-sm text-center leading-relaxed">Cliquez sur un plat<br />pour modifier ses ingrédients</p>
                 </div>
               )}
             </div>
-
           </div>
         )}
 
@@ -775,6 +721,10 @@ function Parametres() {
               }
             }
           }
+          for (const nom of standaloneIngredients) {
+            const key = nom.toLowerCase()
+            if (!seen.has(key)) seen.set(key, nom)
+          }
 
           const query = searchIngredients.toLowerCase().trim()
           const filtered = [...seen.entries()]
@@ -793,11 +743,38 @@ function Parametres() {
             }
           }
 
-          // Tous les rayons actifs (même vides) + non classés à la fin
           const sections = rayonsActifs.map(r => ({ nom: r, ings: byRayon[r] ?? [] }))
 
           return (
             <div className="max-w-2xl">
+              {/* Ajout rapide d'ingrédient */}
+              <form onSubmit={handleAjouterIngredientStandalone} className="flex flex-wrap gap-2 mb-4">
+                <input
+                  type="text"
+                  value={nomNouvelIng}
+                  onChange={e => setNomNouvelIng(e.target.value)}
+                  placeholder="Nouvel ingrédient…"
+                  className="flex-1 min-w-36 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
+                />
+                <select
+                  value={rayonNouvelIng}
+                  onChange={e => setRayonNouvelIng(e.target.value)}
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">— rayon —</option>
+                  {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
+                >
+                  <Plus size={15} />
+                  Ajouter
+                </button>
+              </form>
+
+              {/* Recherche */}
               <div className="relative mb-4">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
@@ -811,16 +788,16 @@ function Parametres() {
 
               {seen.size === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">
-                  Aucun ingrédient connu. Ajoutez des plats ou des ingrédients libres dans le Planning.
+                  Aucun ingrédient connu. Ajoutez des plats, des ingrédients libres dans le Planning, ou utilisez le formulaire ci-dessus.
                 </p>
               ) : filtered.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">Aucun résultat pour cette recherche.</p>
               ) : (
                 <DndContext
                   sensors={sensors}
-                  onDragStart={() => setIngDragging(true)}
+                  onDragStart={handleIngredientDragStart}
                   onDragEnd={handleIngredientDragEnd}
-                  onDragCancel={() => setIngDragging(false)}
+                  onDragCancel={() => setActiveIngId(null)}
                 >
                   <div className="space-y-1">
                     {sections.map(({ nom: rayonNom, ings }) => (
@@ -847,6 +824,23 @@ function Parametres() {
                       />
                     )}
                   </div>
+
+                  {/* Overlay : élément physique qui suit le curseur */}
+                  <DragOverlay dropAnimation={null}>
+                    {activeIngId && (
+                      <div
+                        style={{
+                          transform: 'scale(1.06) rotate(2deg)',
+                          boxShadow: '0 12px 32px -4px rgba(0,0,0,0.25), 0 4px 10px -2px rgba(0,0,0,0.15)',
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border bg-white border-green-400 text-gray-700 opacity-95 select-none"
+                      >
+                        <span className="truncate max-w-28">{activeIngId}</span>
+                        <span className="text-green-500 shrink-0 ml-0.5"><Pencil size={9} /></span>
+                        <span className="text-red-400 shrink-0"><X size={10} /></span>
+                      </div>
+                    )}
+                  </DragOverlay>
                 </DndContext>
               )}
 
@@ -860,24 +854,20 @@ function Parametres() {
         {/* ===== ONGLET RAYONS ===== */}
         {activeTab === 'rayons' && (
           <div className="md:grid md:grid-cols-[200px_1fr] md:gap-8 md:items-start">
-
             <section>
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                Magasin
-              </h2>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Magasin</h2>
               <div className="flex gap-2 flex-wrap md:flex-col">
                 {magasins.map(m => (
                   <button
                     key={m.id}
-                    onClick={() => handleSwitchMagasin(m.nom)}
+                    onClick={() => setMagasinActif(m.nom)}
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm border-2 transition-all ${
                       magasinActif === m.nom
                         ? 'bg-green-600 text-white border-green-700 shadow-md font-semibold'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:text-green-700'
                     }`}
                   >
-                    <Store size={15} />
-                    {m.nom}
+                    <Store size={15} />{m.nom}
                   </button>
                 ))}
               </div>
@@ -886,20 +876,15 @@ function Parametres() {
             {magasinCourant && (
               <section>
                 <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                  Rayons —{' '}
-                  <span className="text-gray-700 normal-case font-semibold">{magasinCourant.nom}</span>
+                  Rayons — <span className="text-gray-700 normal-case font-semibold">{magasinCourant.nom}</span>
                 </h2>
 
                 <DndContext sensors={sensors} onDragEnd={handleRayonDragEnd}>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
                     {magasinCourant.rayons.map(rayon => (
                       <DraggableRayonRow
-                        key={rayon.id}
-                        rayon={rayon}
-                        magasinCourant={magasinCourant}
-                        total={magasinCourant.rayons.length}
-                        renommerRayon={renommerRayon}
-                        supprimerRayon={supprimerRayon}
+                        key={rayon.id} rayon={rayon} magasinCourant={magasinCourant}
+                        total={magasinCourant.rayons.length} renommerRayon={renommerRayon} supprimerRayon={supprimerRayon}
                       />
                     ))}
                   </div>
@@ -907,24 +892,17 @@ function Parametres() {
 
                 <form onSubmit={handleAjouterRayon} className="flex gap-2 mt-4">
                   <input
-                    type="text"
-                    value={nouveauRayon}
-                    onChange={e => setNouveauRayon(e.target.value)}
+                    type="text" value={nouveauRayon} onChange={e => setNouveauRayon(e.target.value)}
                     placeholder="Nom du nouveau rayon"
                     className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                     required
                   />
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all"
-                  >
-                    <Plus size={16} />
-                    Ajouter
+                  <button type="submit" className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
+                    <Plus size={16} />Ajouter
                   </button>
                 </form>
               </section>
             )}
-
           </div>
         )}
 

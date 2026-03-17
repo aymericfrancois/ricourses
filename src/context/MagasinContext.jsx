@@ -4,6 +4,7 @@ import mappingRayons from '../data/mappingRayons.json'
 
 const STORAGE_KEY_ACTIF = 'ricourses_magasin_actif'
 const STORAGE_KEY_RAYONS = 'ricourses_rayons_par_magasin'
+const STORAGE_KEY_STANDALONE = 'ricourses_ingredients_standalone'
 
 function buildInitialRayons(magasins) {
   const initial = {}
@@ -47,6 +48,12 @@ export function MagasinProvider({ children }) {
 
   const [magasinActif, setMagasinActifState] = useState(() => loadMagasinActif(magasins))
   const [rayonsParMagasin, setRayonsParMagasin] = useState(() => loadRayons(magasins))
+  const [standaloneIngredients, setStandaloneIngredients] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_STANDALONE)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif)
@@ -55,6 +62,10 @@ export function MagasinProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_RAYONS, JSON.stringify(rayonsParMagasin))
   }, [rayonsParMagasin])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_STANDALONE, JSON.stringify(standaloneIngredients))
+  }, [standaloneIngredients])
 
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
@@ -105,6 +116,22 @@ export function MagasinProvider({ children }) {
       }
       return result
     })
+    setStandaloneIngredients(prev => prev.filter(n => n.toLowerCase() !== key))
+  }
+
+  function ajouterIngredientStandalone(nom, rayon) {
+    const trimmed = nom.trim()
+    if (!trimmed) return
+    const key = trimmed.toLowerCase()
+    setStandaloneIngredients(prev =>
+      prev.some(n => n.toLowerCase() === key) ? prev : [...prev, trimmed]
+    )
+    if (rayon) {
+      setRayonsParMagasin(prev => ({
+        ...prev,
+        [magasinActif]: { ...prev[magasinActif], [key]: rayon },
+      }))
+    }
   }
 
   return (
@@ -112,6 +139,7 @@ export function MagasinProvider({ children }) {
       magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
       magasinActif, setMagasinActif,
       rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
+      standaloneIngredients, ajouterIngredientStandalone,
     }}>
       {children}
     </MagasinContext.Provider>
