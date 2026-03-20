@@ -5,6 +5,7 @@ import mappingRayons from '../data/mappingRayons.json'
 const STORAGE_KEY_ACTIF = 'ricourses_magasin_actif'
 const STORAGE_KEY_RAYONS = 'ricourses_rayons_par_magasin'
 const STORAGE_KEY_STANDALONE = 'ricourses_ingredients_standalone'
+const STORAGE_KEY_SPLITS = 'ricourses_splits'
 
 function buildInitialRayons(magasins) {
   const initial = {}
@@ -55,6 +56,13 @@ export function MagasinProvider({ children }) {
     } catch { return [] }
   })
 
+  const [splits, setSplitsState] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_SPLITS)
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif)
   }, [magasinActif])
@@ -66,6 +74,20 @@ export function MagasinProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_STANDALONE, JSON.stringify(standaloneIngredients))
   }, [standaloneIngredients])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SPLITS, JSON.stringify(splits))
+  }, [splits])
+
+  function getSplit(nomIngredient) {
+    if (!nomIngredient) return 'both'
+    return splits[nomIngredient.toLowerCase()] ?? 'both'
+  }
+
+  function setSplit(nomIngredient, valeur) {
+    if (!nomIngredient) return
+    setSplitsState(prev => ({ ...prev, [nomIngredient.toLowerCase()]: valeur }))
+  }
 
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
@@ -140,6 +162,7 @@ export function MagasinProvider({ children }) {
       magasinActif, setMagasinActif,
       rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
       standaloneIngredients, ajouterIngredientStandalone,
+      getSplit, setSplit,
     }}>
       {children}
     </MagasinContext.Provider>

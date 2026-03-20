@@ -6,6 +6,7 @@ import Home from './pages/Home'
 import Parametres from './pages/Parametres'
 import ListeCourses from './pages/ListeCourses'
 import Planning from './pages/Planning'
+import Scanner from './pages/Scanner'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/plats" element={<Parametres />} />
             <Route path="/rayons" element={<Parametres />} />
             <Route path="/ingredients" element={<Parametres />} />
+            <Route path="/scanner" element={<Scanner />} />
           </Routes>
         </PlanningProvider>
       </MagasinProvider>

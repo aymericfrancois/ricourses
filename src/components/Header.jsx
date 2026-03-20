@@ -28,14 +28,10 @@ function Header() {
               <CalendarDays size={15} />
               <span>Planning</span>
             </NavLink>
-            <button
-              disabled
-              title="Bientôt disponible"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-300 cursor-not-allowed"
-            >
+            <NavLink to="/scanner" className={navLinkClass}>
               <ScanLine size={15} />
               <span>Scanner</span>
-            </button>
+            </NavLink>
             <NavLink to="/plats" className={navLinkClass}>
               <UtensilsCrossed size={15} />
               <span>Plats</span>
