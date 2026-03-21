@@ -100,15 +100,30 @@ function DroppableCategorie({ categorie, plats, selectedPlatId, onSelectPlat }) 
   )
 }
 
-// ---- Tag ingrédient (affichage pur, sans DnD) ----
-function IngredientTagInner({ nom, isAssigned }) {
+// ---- Toggle Tricount compact (3 boutons emoji) ----
+const SPLIT_MINI_OPTS = [
+  { val: 'me', emoji: '👦', active: 'bg-blue-500 text-white', title: 'Moi' },
+  { val: 'both', emoji: '👥', active: 'bg-green-500 text-white', title: '50/50' },
+  { val: 'ali', emoji: '👩', active: 'bg-pink-500 text-white', title: 'Ali' },
+]
+
+function SplitMini({ value, onChange }) {
   return (
-    <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border shadow-sm ${
-      isAssigned
-        ? 'bg-white border-gray-200 text-gray-700'
-        : 'bg-orange-50 border-orange-200 text-orange-600'
-    }`}>
-      <span className="truncate max-w-28">{nom}</span>
+    <div className="flex rounded border border-gray-200 overflow-hidden shrink-0">
+      {SPLIT_MINI_OPTS.map((opt, i) => (
+        <button
+          key={opt.val}
+          type="button"
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onChange(opt.val) }}
+          title={opt.title}
+          className={`w-6 h-6 flex items-center justify-center text-[11px] transition-colors ${i > 0 ? 'border-l border-gray-100' : ''} ${
+            value === opt.val ? opt.active : 'bg-white hover:bg-gray-50'
+          }`}
+        >
+          {opt.emoji}
+        </button>
+      ))}
     </div>
   )
 }
@@ -118,6 +133,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
   const [isRenaming, setIsRenaming] = useState(false)
   const [newNom, setNewNom] = useState(nom)
   const submittedRef = useRef(false)
+  const { getSplit, setSplit } = useMagasinContext()
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: nom })
   const style = { transform: CSS.Translate.toString(transform) }
@@ -147,7 +163,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
           if (submittedRef.current) { submittedRef.current = false; return }
           confirmRename()
         }}
-        className="rounded-full border-2 border-green-400 bg-white px-3 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 w-36"
+        className="rounded-lg border-2 border-green-400 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 w-full"
       />
     )
   }
@@ -158,23 +174,21 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
         isDragging ? 'opacity-50' : ''
-      } ${
-        isAssigned
-          ? 'bg-white border-gray-200 text-gray-700'
-          : 'bg-orange-50 border-orange-200 text-orange-600'
-      }`}
+      } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
     >
-      <span className="truncate max-w-28">{nom}</span>
+      <GripVertical size={12} className="text-gray-300 shrink-0" />
+      <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'text-gray-700' : 'text-orange-600'}`}>{nom}</span>
+      <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
       <button
         type="button"
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); setIsRenaming(true); setNewNom(nom) }}
-        className="text-green-500 hover:text-green-700 transition-colors shrink-0 ml-0.5"
+        className="text-gray-300 hover:text-green-500 transition-colors shrink-0"
         aria-label={`Renommer ${nom}`}
       >
-        <Pencil size={9} />
+        <Pencil size={11} />
       </button>
       <button
         type="button"
@@ -185,7 +199,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
             onDelete()
           }
         }}
-        className="text-red-400 hover:text-red-600 transition-colors shrink-0"
+        className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
         aria-label={`Supprimer ${nom}`}
       >
         <X size={10} />
@@ -217,7 +231,7 @@ function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngred
         )}
       </h3>
       {!condensed && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-1.5">
+        <div className="flex flex-col gap-1.5">
           {ings.map(({ key, nom: ingNom }) => (
             <IngredientTag
               key={key}
@@ -330,6 +344,7 @@ function Parametres() {
     magasinActif, setMagasinActif, getRayon, setRayon,
     renommerIngredientDansRayons, supprimerIngredientDansRayons,
     standaloneIngredients, ajouterIngredientStandalone,
+    setSplit,
   } = useMagasinContext()
   const { espacesLibres } = usePlanningContext()
 
@@ -364,6 +379,7 @@ function Parametres() {
   const [activeIngId, setActiveIngId] = useState(null) // drag overlay + condensed mode
   const [nomNouvelIng, setNomNouvelIng] = useState('')
   const [rayonNouvelIng, setRayonNouvelIng] = useState('')
+  const [splitNouvelIng, setSplitNouvelIng] = useState('both')
 
   // --- État onglet Rayons ---
   const [nouveauRayon, setNouveauRayon] = useState('')
@@ -451,8 +467,10 @@ function Parametres() {
   function handleAjouterIngredientStandalone(e) {
     e.preventDefault()
     ajouterIngredientStandalone(nomNouvelIng, rayonNouvelIng)
+    if (splitNouvelIng !== 'both') setSplit(nomNouvelIng, splitNouvelIng)
     setNomNouvelIng('')
     setRayonNouvelIng('')
+    setSplitNouvelIng('both')
   }
 
   // ---- Ingrédients DnD ----
@@ -765,6 +783,10 @@ function Parametres() {
                   <option value="">— rayon —</option>
                   {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-xs text-gray-400">Tricount</span>
+                  <SplitMini value={splitNouvelIng} onChange={setSplitNouvelIng} />
+                </div>
                 <button
                   type="submit"
                   className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"

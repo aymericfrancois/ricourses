@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { ScanLine, Upload, Camera, RotateCcw, CheckCircle2 } from 'lucide-react'
+import { ScanLine, Upload, Camera, RotateCcw, CheckCircle2, BookmarkPlus, BookmarkCheck } from 'lucide-react'
 import { useMagasinContext } from '../context/MagasinContext'
 
 // Données simulées — représentatives d'un vrai ticket
@@ -44,7 +44,19 @@ function SplitToggle({ value, onChange }) {
 }
 
 function Scanner() {
-  const { getSplit } = useMagasinContext()
+  const { getSplit, setSplit } = useMagasinContext()
+
+  // Articles dont le split vient d'être mémorisé (feedback visuel bref)
+  const [recentlySaved, setRecentlySaved] = useState(new Set())
+
+  function memoriserDefaut(article) {
+    const val = articleSplits[article.id] ?? 'both'
+    setSplit(article.matchedNom, val)
+    setRecentlySaved(prev => new Set([...prev, article.id]))
+    setTimeout(() => setRecentlySaved(prev => {
+      const next = new Set(prev); next.delete(article.id); return next
+    }), 1500)
+  }
 
   const [step, setStep] = useState('capture') // 'capture' | 'loading' | 'resultat'
   const [imagePreview, setImagePreview] = useState(null)
@@ -253,6 +265,9 @@ function Scanner() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
           {MOCK_ARTICLES.map(article => {
             const split = articleSplits[article.id] ?? 'both'
+            const defaultSplit = article.matchedNom ? getSplit(article.matchedNom) : 'both'
+            const isModified = article.matchedNom && split !== defaultSplit
+            const justSaved = recentlySaved.has(article.id)
             return (
               <div
                 key={article.id}
@@ -270,6 +285,24 @@ function Scanner() {
                   {article.prix.toFixed(2)} €
                 </span>
                 <SplitToggle value={split} onChange={val => setArticleSplit(article.id, val)} />
+                {/* Bouton mémoriser — visible seulement si le split local ≠ défaut global */}
+                {justSaved ? (
+                  <span className="flex items-center gap-1 text-[10px] text-green-600 font-medium shrink-0">
+                    <BookmarkCheck size={13} />
+                    <span className="hidden sm:inline">Mémorisé</span>
+                  </span>
+                ) : isModified ? (
+                  <button
+                    onClick={() => memoriserDefaut(article)}
+                    title={`Mémoriser "${split === 'me' ? 'Moi' : split === 'ali' ? 'Ali' : '50/50'}" comme défaut pour ${article.matchedNom}`}
+                    className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-green-600 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg px-1.5 py-1 transition-colors shrink-0"
+                  >
+                    <BookmarkPlus size={12} />
+                    <span className="hidden sm:inline">Mémoriser</span>
+                  </button>
+                ) : (
+                  <span className="w-5 shrink-0" /> // placeholder pour aligner les colonnes
+                )}
               </div>
             )
           })}
