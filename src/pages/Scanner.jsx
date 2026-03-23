@@ -31,107 +31,90 @@ const MOTS_CLES_IGNORER = [
 /**
  * Parsing « tout-terrain » — Leclerc / Lidl / Carrefour.
  *
- * Améliorations :
- *  - Nettoyage des caractères parasites en tête (>>, ., +, -, *)
- *  - Catégories ">> LAIT" → mémorise la catégorie courante (receiptCategory)
- *  - Multiligne : si une ligne-prix commence par un multiplicateur (2 X, 2 À…),
- *    le nom de l'article est dans la ligne précédente (rawLines[i-1])
- *  - Pas de déduplication : deux articles identiques = deux entrées distinctes
+ * Architecture stricte et linéaire : chaque ligne est indépendante.
+ * Aucune fusion entre lignes consécutives, sauf si la ligne courante
+ * commence par un multiplicateur (2 X, 2 À…).
+ *
+ * Nettoyage nucléaire du nom : /^[^a-zA-ZÀ-ÿ0-9]+/ supprime tout préfixe
+ * qui n'est pas une lettre ou un chiffre (>>, ., espaces, caractères invisibles…).
  */
 function parserTicket(texte) {
-  const rawLines = texte.split('\n')
+  const lines = texte.split('\n')
   const articles = []
   let currentCategory = null
-  let previousTextLine = null // dernière ligne de texte sans prix (pour le multiligne)
 
-  for (let i = 0; i < rawLines.length; i++) {
-    let trimmed = rawLines[i].trim()
-    if (trimmed.length < 3) { previousTextLine = null; continue }
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
+    const trimmed = raw.trim()
 
-    // ── Catégories : lignes qui commencent par ">>"
-    const catMatch = trimmed.match(/^>>+\s*(.+)/)
-    if (catMatch) {
-      currentCategory = catMatch[1].trim().toUpperCase()
-      previousTextLine = null
-      continue
-    }
+    // ── Lignes trop courtes
+    if (trimmed.length < 3) continue
 
-    // ── Nettoyage des caractères parasites en début de ligne
-    trimmed = trimmed.replace(/^[>.*+\-]+\s*/, '')
-
-    // ── Supprimer TVA% en début de ligne (Carrefour : "5.5% ")
-    trimmed = trimmed.replace(/^\d{1,2}[.,]\d{1,2}\s*%\s*/, '')
-
-    if (trimmed.length < 3) { previousTextLine = null; continue }
-
-    // ── Filtrage strict
+    // ── Filtrage des mots-clés (total, carte, TVA…)
     const lower = trimmed.toLowerCase()
-    if (MOTS_CLES_IGNORER.some(kw => lower.includes(kw))) {
-      previousTextLine = null
-      continue
-    }
+    if (MOTS_CLES_IGNORER.some(kw => lower.includes(kw))) continue
 
-    // Chercher tous les nombres à 2 décimales dans la ligne
+    // ── Détection de prix sur cette ligne
     const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,\.]\d{2})/g)]
-    if (allPrices.length === 0) {
-      // Pas de prix → c'est peut-être un nom d'article pour la ligne suivante
-      previousTextLine = trimmed
+    const hasPrice = allPrices.length > 0
+
+    // ── Lignes ">>" sans prix → catégorie de rayon
+    if (!hasPrice && /^>>+/.test(trimmed)) {
+      const catMatch = trimmed.match(/^>>+\s*(.+)/)
+      if (catMatch) {
+        currentCategory = catMatch[1].replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '').trim().toUpperCase()
+      }
       continue
     }
 
-    // Le DERNIER nombre à 2 décimales = prix total
+    // ── Pas de prix → on passe sans stocker de contexte
+    if (!hasPrice) continue
+
+    // ── Prix total = dernier nombre à 2 décimales
     const lastPriceMatch = allPrices[allPrices.length - 1]
     const prix = parseFloat(lastPriceMatch[1].replace(',', '.'))
 
-    // Exclure les prix négatifs et les aberrations
-    if (prix <= 0 || prix > 500) { previousTextLine = null; continue }
+    if (prix <= 0 || prix > 500) continue
 
-    // ── Correctif multiplicateur : "2 X 1.35€ 2.70" / "2 À 1.35 2.70"
-    // Si la ligne commence par un multiplicateur, le nom est dans la ligne précédente brute
-    const isMultiplierLine = /^\d+\s*[xXàÀ*]/.test(trimmed)
-    let nom
+    // ── Extraction du nom
+    let cleanedName
+
+    // Seule exception multiligne : ligne-multiplicateur (ex: "2 X 1.35 2.70")
+    const isMultiplierLine = /^\s*\d+\s*[xXàÀ*]/.test(trimmed)
 
     if (isMultiplierLine) {
-      // Récupérer le nom depuis la ligne brute précédente
-      const prevRaw = i > 0 ? rawLines[i - 1].trim() : ''
-      nom = prevRaw
-        .replace(/^\d{5,}\s*/, '')
+      // Le vrai nom est dans la ligne brute précédente
+      const prevLine = i > 0 ? lines[i - 1].trim() : ''
+      cleanedName = prevLine
+        .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
         .trim()
-      if (nom.length < 2) { previousTextLine = null; continue }
     } else {
-      // Tout ce qui est AVANT le premier prix = nom de l'article
+      // Texte avant le PREMIER prix = nom (chaque ligne est indépendante)
       const firstPriceIndex = allPrices[0].index
-      nom = trimmed.slice(0, firstPriceIndex).trim()
-
-      // Nettoyer le nom
-      nom = nom.replace(/^\d{5,}\s*/, '')        // codes-barres numériques
-      nom = nom.replace(/\d+\s*[xX×]\s*/g, '')   // "2x" "3 x" quantités
-      nom = nom.replace(/\s+/g, ' ').trim()
-
-      // ── Multiligne : si le nom est vide ou trop court, utiliser la ligne précédente
-      if (nom.length < 2 || /^\d+$/.test(nom)) {
-        if (previousTextLine && previousTextLine.length >= 2) {
-          nom = previousTextLine
-        } else {
-          previousTextLine = null
-          continue
-        }
-      }
+      const rawName = trimmed.slice(0, firstPriceIndex)
+      // Nettoyage nucléaire : supprime tout ce qui n'est pas lettre/chiffre au début
+      cleanedName = rawName
+        .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
+        .replace(/^\d{5,}\s*/, '')       // codes-barres numériques
+        .replace(/\d+\s*[xX×]\s*/g, '') // quantités "2x"
+        .replace(/\s+/g, ' ')
+        .trim()
     }
 
-    const article = {
+    console.log('LIGNE LUE :', raw, '--> ACTION :', hasPrice ? 'AJOUTÉ' : 'IGNORÉ', '--> RESULTAT NOM :', cleanedName)
+
+    if (!cleanedName || cleanedName.length < 2) continue
+
+    articles.push({
       id: crypto.randomUUID(),
-      nom: nom.toUpperCase(),
+      nom: cleanedName.toUpperCase(),
       prix,
       matchedNom: null,
       receiptCategory: currentCategory,
       ignored: false,
-    }
-    console.log('Ligne brute :', rawLines[i].trim(), '-> Article extrait :', { name: article.nom, price: article.prix, cat: article.receiptCategory })
-    articles.push(article)
-    previousTextLine = null
+    })
   }
 
   return articles
