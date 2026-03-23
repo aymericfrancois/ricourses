@@ -6,6 +6,7 @@ const STORAGE_KEY_ACTIF = 'ricourses_magasin_actif'
 const STORAGE_KEY_RAYONS = 'ricourses_rayons_par_magasin'
 const STORAGE_KEY_STANDALONE = 'ricourses_ingredients_standalone'
 const STORAGE_KEY_SPLITS = 'ricourses_splits'
+const STORAGE_KEY_OCR_ALIASES = 'ricourses_ocr_aliases'
 
 function buildInitialRayons(magasins) {
   const initial = {}
@@ -63,6 +64,15 @@ export function MagasinProvider({ children }) {
     } catch { return {} }
   })
 
+  // ocrAliases: { normalizedArticleName: ingredientName }
+  // Ex: { "daddy poudre sachet": "Sucre", "coeur laitue": "Salade" }
+  const [ocrAliases, setOcrAliasesState] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_OCR_ALIASES)
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif)
   }, [magasinActif])
@@ -78,6 +88,22 @@ export function MagasinProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SPLITS, JSON.stringify(splits))
   }, [splits])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_OCR_ALIASES, JSON.stringify(ocrAliases))
+  }, [ocrAliases])
+
+  function getOcrAlias(nomArticle) {
+    if (!nomArticle) return null
+    const key = nomArticle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+    return ocrAliases[key] ?? null
+  }
+
+  function setOcrAlias(nomArticle, nomIngredient) {
+    if (!nomArticle || !nomIngredient) return
+    const key = nomArticle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+    setOcrAliasesState(prev => ({ ...prev, [key]: nomIngredient }))
+  }
 
   function getSplit(nomIngredient) {
     if (!nomIngredient) return 'both'
@@ -163,6 +189,7 @@ export function MagasinProvider({ children }) {
       rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
       standaloneIngredients, ajouterIngredientStandalone,
       getSplit, setSplit,
+      ocrAliases, getOcrAlias, setOcrAlias,
     }}>
       {children}
     </MagasinContext.Provider>

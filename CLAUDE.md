@@ -4,7 +4,7 @@ This file provides guidance for AI assistants working in this codebase.
 
 ## Project Overview
 
-**Ricourses** is a French-language meal planning and grocery list web app. Users plan their week (assign meals per day, add free ingredients), and the app auto-generates a shopping list grouped by store section. All state is persisted in `localStorage`; there is no backend.
+**Ricourses** is a French-language meal planning, grocery list, and household expense splitting web app. Users plan their week (assign meals per day, add free ingredients), the app auto-generates a shopping list grouped by store section, and a Scanner page reads receipts to split expenses via a Tricount-style calculator. All state is persisted in `localStorage`; there is no backend.
 
 **Live app:** Deployed to GitHub Pages at `/ricourses/`
 
@@ -18,7 +18,7 @@ This file provides guidance for AI assistants working in this codebase.
 | Routing | React Router DOM 7.13 |
 | Styling | Tailwind CSS 4.2 (via Vite plugin) |
 | Icons | Lucide React 0.575 |
-| Drag & Drop | @dnd-kit/core |
+| Drag & Drop | @dnd-kit/core + @dnd-kit/utilities |
 | Build | Vite 7.3 |
 | Linting | ESLint 9 (flat config) |
 | Deploy | GitHub Actions → GitHub Pages |
@@ -43,9 +43,9 @@ No tests in this project.
 ```
 src/
 ├── components/
-│   └── Header.jsx              # Sticky header: logo, nav links, store selector
+│   └── Header.jsx              # Sticky header: logo, flat nav, store selector
 ├── context/
-│   ├── MagasinContext.jsx      # Global: active store + ingredient→section mappings
+│   ├── MagasinContext.jsx      # Global: stores, ingredient→section mappings, defaultSplit
 │   └── PlanningContext.jsx     # Global: weekly meals + free ingredient blocks
 ├── hooks/
 │   ├── useMagasins.js          # Store & section CRUD → localStorage
@@ -53,8 +53,9 @@ src/
 ├── pages/
 │   ├── Home.jsx                # Landing page — navigation hub
 │   ├── Planning.jsx            # Weekly planner + live shopping list with DnD
+│   ├── Scanner.jsx             # Receipt scanner (mock OCR) + Tricount calculator
 │   ├── ListeCourses.jsx        # Read-only aggregated shopping list (all meals)
-│   └── Parametres.jsx          # Settings: Plats / Catalogue / Magasins tabs
+│   └── Parametres.jsx          # Settings: handles /plats, /rayons, /ingredients routes
 ├── data/
 │   ├── initialMagasins.json    # 3 default stores: Lidl, Carrefour, E.Leclerc (12 sections each)
 │   ├── initialPlats.json       # 38 pre-loaded meals with ingredients
@@ -75,10 +76,32 @@ Routes defined in `src/App.jsx` with `basename="/ricourses"`.
 
 | Path | Component | Purpose |
 |---|---|---|
-| `/` | `Home` | Landing page with navigation cards |
+| `/` | `Home` | Landing page |
 | `/planning` | `Planning` | Weekly planner + live shopping list |
-| `/parametres` | `Parametres` | Manage meals, section catalogue, stores |
-| `/liste` | `ListeCourses` | Read-only list from all meals |
+| `/scanner` | `Scanner` | Receipt scanner + Tricount |
+| `/plats` | `Parametres` | Manage meals and their ingredients |
+| `/rayons` | `Parametres` | Reorder/rename/add sections per store |
+| `/ingredients` | `Parametres` | Searchable ingredient catalogue with section & split assignment |
+| `/liste` | `ListeCourses` | Read-only list from all meals (not in main nav) |
+
+`Parametres` uses `useLocation()` to detect which of the three sub-routes is active and renders the corresponding tab content.
+
+---
+
+## Component: Header (`src/components/Header.jsx`)
+
+Persistent sticky header on all pages. Flat navigation — no dropdown menus.
+
+**Nav links (in order):**
+- **Planning** → `/planning` (CalendarDays icon)
+- **Scanner** → `/scanner` (ScanLine icon)
+- **Plats** → `/plats` (UtensilsCrossed icon)
+- **Rayons** → `/rayons` (LayoutList icon)
+- **Ingrédients** → `/ingredients` (Leaf icon)
+
+Plus a `<select>` store picker (right side) → `setMagasinActif`.
+
+Active NavLink: `bg-green-50 text-green-700 border-b-2 border-green-600`.
 
 ---
 
@@ -86,7 +109,8 @@ Routes defined in `src/App.jsx` with `basename="/ricourses"`.
 
 ### MagasinContext (`src/context/MagasinContext.jsx`)
 
-Active-store global context. Access with `useMagasinContext()`.
+Global context for stores, section mappings, standalone ingredients, and Tricount splits.
+Access with `useMagasinContext()`.
 
 **Provides:**
 - `magasins` — store objects array (from `useMagasins`)
@@ -94,7 +118,13 @@ Active-store global context. Access with `useMagasinContext()`.
 - `rayonsParMagasin` — `{ [storeName]: { [ingredientLower]: sectionName } }`
 - `getRayon(nomIngredient)` — case-insensitive lookup for active store (returns `''` if unmapped)
 - `setRayon(nomIngredient, rayonNom)` — updates active store's mapping (keys always lowercase)
-- Section CRUD: `moveRayonUp`, `moveRayonDown`, `renommerRayon`, `ajouterRayon`, `supprimerRayon`
+- `renommerIngredientDansRayons(ancienNom, nouveauNom)` — renames key in all stores
+- `supprimerIngredientDansRayons(nom)` — removes ingredient from all store mappings + standalone list
+- Section CRUD: `renommerRayon`, `ajouterRayon`, `supprimerRayon`, `reorderRayons`
+- `standaloneIngredients` — string array of ingredients created directly in the catalogue (not from plats)
+- `ajouterIngredientStandalone(nom, rayon)` — adds to standalone list + assigns section
+- `getSplit(nomIngredient)` — returns `'me'|'ali'|'both'` for ingredient (default `'both'`)
+- `setSplit(nomIngredient, valeur)` — persists Tricount default for ingredient (key: lowercase)
 
 **Seeding:** On first use, `rayonsParMagasin` is populated from `mappingRayons.json` for all stores.
 
@@ -115,33 +145,40 @@ Weekly planner global context. Access with `usePlanningContext()`.
       soir: null,
       soirDelta: { excluded: [], overrides: {}, extras: [] },
     },
-    ...
+    // ...
   ],
   espacesLibres: {
-    petitDejeuner: [],      // [{ id, nom, quantite, unite }]
+    petitDejeuner: [],      // [{ id, nom, quantite, unite, platId? }]
     achatsPonctuels: [],
     alicya: [],
   }
 }
 ```
 
+**Note on `espacesLibres`:** Each entry can be a plain ingredient (`platId: null`) or a reference to a full meal (`platId: <id>`). When `platId` is set, the shopping list expands all ingredients of that meal multiplied by `quantite` (used as a multiplier).
+
+**Delta pattern:** `midiDelta`/`soirDelta` store per-instance overrides that are strictly local — they never touch the original recipe:
+- `excluded: [ingId, ...]` — ingredients removed from this meal instance
+- `overrides: { [ingId]: { quantite, unite } }` — qty/unit overrides
+- `extras: [{ id, nom, quantite, unite }]` — additional ingredients added only for this meal
+
 **Provides:**
 - `semaine`, `espacesLibres`
-- `setMidi(jourIdx, platId)`, `setSoir(jourIdx, platId)`
-- `toggleExclu(jourIdx, repas, ingId)` — include/exclude ingredient from a planned meal
-- `setOverride(jourIdx, repas, ingId, quantite, unite)` — override qty/unit per meal
+- `setMidi(jourIdx, platId)`, `setSoir(jourIdx, platId)` — also resets the corresponding delta
+- `toggleExclu(jourIdx, repas, ingId)`
+- `setOverride(jourIdx, repas, ingId, quantite, unite)`
 - `addExtra(jourIdx, repas, {nom, quantite, unite})`, `removeExtra(jourIdx, repas, extraId)`
 - `ajouterIngredientLibre(bloc, {nom, quantite, unite})`, `supprimerIngredientLibre(bloc, id)`, `updateIngredientLibre(bloc, id, quantite, unite)`
-- `resetPlanning()` — clear all weekly data
+- `resetPlanning()` — clears all weekly data
 
 ---
 
 ### Custom Hooks
 
-**`useMagasins()`** — `magasins` in localStorage (`ricourses_magasins`). Minimum 1 section per store.
+**`useMagasins()`** — `magasins` in localStorage (`ricourses_magasins`). Minimum 1 section per store. Exposes: `moveRayonUp`, `moveRayonDown`, `renommerRayon`, `ajouterRayon`, `supprimerRayon`, `reorderRayons`.
 
 **`usePlats()`** — `plats` in localStorage (`ricourses_plats`).
-Returns: `plats`, `ajouterPlat`, `supprimerPlat`, `updatePlatIcone`, `ajouterIngredient`, `supprimerIngredient`.
+Returns: `plats`, `ajouterPlat`, `supprimerPlat`, `renommerPlat`, `updatePlatIcone`, `updatePlatCategorie`, `ajouterIngredient`, `supprimerIngredient`, `updateIngredient`, `renommerIngredient`, `supprimerIngredientDePlats`.
 
 ---
 
@@ -153,6 +190,8 @@ Returns: `plats`, `ajouterPlat`, `supprimerPlat`, `updatePlatIcone`, `ajouterIng
 | `ricourses_plats` | Array of meal objects with ingredients |
 | `ricourses_magasin_actif` | Active store name (string) |
 | `ricourses_rayons_par_magasin` | `{ storeName: { ingredientLower: sectionName } }` |
+| `ricourses_ingredients_standalone` | `string[]` — ingredients added directly in catalogue |
+| `ricourses_splits` | `{ ingredientLower: 'me'|'ali'|'both' }` — Tricount defaults |
 | `ricourses_planning` | Weekly planning: semaine + espacesLibres |
 
 ---
@@ -167,14 +206,15 @@ Returns: `plats`, `ajouterPlat`, `supprimerPlat`, `updatePlatIcone`, `ajouterIng
 
 ### Meal (`plat`)
 ```json
-{ "id": "uuid", "nom": "Spaghetti Carbo", "icone": "utensils",
+{ "id": "uuid", "nom": "Spaghetti Carbo", "icone": "utensils", "categorie": "PÂTES",
   "ingredients": [{ "id": "uuid", "nom": "Lardons", "quantite": 200, "unite": "g" }] }
 ```
 
 ### Free ingredient (`ingredientLibre`)
 ```json
-{ "id": "uuid", "nom": "Café", "quantite": 250, "unite": "g" }
+{ "id": "uuid", "nom": "Café", "quantite": 250, "unite": "g", "platId": null }
 ```
+When `platId` is set: the item represents a full meal, and `quantite` is a multiplier applied to each ingredient of that meal.
 
 New IDs via `crypto.randomUUID()`.
 
@@ -186,38 +226,88 @@ New IDs via `crypto.randomUUID()`.
 The main page. Two columns (stacked on mobile, side by side on desktop):
 
 **Left (3/5):**
-- **La Semaine:** A table (days × Midi/Soir). Each cell has a `PlatCombobox` (autocomplete search over meal names). Clicking a day's meal opens a `RepasEditor`: exclude individual ingredients, override quantities/units, add extra ingredients.
-- **Espaces Libres:** Three free-ingredient blocks — "Petit déjeuner", "Achats ponctuels", "Alicya". Each supports add/edit/delete of ingredients.
-- **Reset** button with confirmation dialog.
+- **La Semaine:** Grid (days × Midi/Soir). Each cell has a `PlatCombobox` (alphabetically sorted autocomplete). Opening a meal cell shows a `RepasEditor`: exclude ingredients, override qty/unit, add extras — all strictly local via the delta pattern.
+- **Espaces Libres:** Three free blocks — "Petit déjeuner", "Achats ponctuels", "Alicya". Each accepts ingredients or full plat references. Inline qty/unit editing on existing entries.
+- **Reset** button with two-step confirmation.
 
 **Right (2/5, sticky):**
-- Live shopping list aggregated from all selected meals (with overrides + extras) + all free blocks.
-- Grouped by active store's section order, alphabetically sorted within each section.
-- Checkboxes to mark items done.
-- Drag & drop (`@dnd-kit/core`) to reassign an ingredient to a different section directly from the list.
-- Orphaned ingredients (no section) shown at the bottom.
+- Live shopping list aggregated from all meal slots (applying deltas) + all free blocks.
+- Grouped by active store's section order, alphabetically within each section.
+- All sections rendered (including empty ones with dashed "Aucun ingrédient" placeholder).
+- Checkboxes to mark items done (strikethrough + green fill).
+- **DnD** (`@dnd-kit/core`): drag an ingredient onto a section header to permanently reassign it via `setRayon`.
+- `DragOverlay` shows a floating ghost card during drag.
+- Orphaned ingredients (no section) shown at the bottom in a droppable "Autres / Non classés" zone.
 
-### Parametres (`/parametres`)
-Three tabs (uses shared `Header`, no page-level header):
-- **Plats:** Add/edit/delete meals and their ingredients. Desktop: 2-column (list + detail panel). Mobile: inline expand.
-- **Catalogue:** Searchable list of all known ingredients (from meals + free blocks), with a section select per ingredient for the active store. The canonical place to bulk-assign sections.
-- **Magasins:** Reorder sections per store (↑↓), rename, add, delete.
+### Scanner (`/scanner`)
+Two-step receipt analysis workflow with Tricount expense splitting.
+
+**Step 1 — Capture:**
+- Drop zone (drag & drop image) with preview.
+- "Caméra" button (`capture="environment"`, opens camera on mobile) and "Galerie" button (file picker).
+- "Analyser le ticket" button (disabled until image selected).
+- On click: 2-second loading state (spinner + animated text), then transitions to Step 2.
+
+**Step 2 — Répartition:**
+- Renders `MOCK_ARTICLES` (10 hardcoded articles — current mock OCR, to be replaced).
+- Each article: name, matched ingredient name (if recognized), price, and a 3-state `SplitToggle`.
+- `SplitToggle` values: `'me'` (👦 Moi, blue) | `'both'` (👥 50/50, green) | `'ali'` (👩 Ali, pink).
+- Color-coded left border per article (blue/green/pink).
+- **Initialization:** each article's split is set from `getSplit(article.matchedNom)` when entering Step 2. Articles without a match default to `'both'`.
+- **Local-only:** changing the toggle updates only the local `articleSplits` state — it does NOT call `setSplit`.
+- **"Mémoriser" button:** appears when `articleSplits[id] !== getSplit(matchedNom)` (i.e., the user changed it). Clicking calls `setSplit(matchedNom, newVal)` to persist the default globally. Shows a `BookmarkCheck` "Mémorisé" confirmation for 1.5 seconds, then disappears.
+
+**Fixed bottom panel — Tricount:**
+- Total ticket (sum of all articles).
+- Part Moi = sum of `'me'` articles + 50% of `'both'` articles.
+- Part Ali = total − Part Moi.
+- Sub-labels show breakdown (n solo + n partagés). Updates in real time on every toggle change.
+
+**Mock OCR data (`MOCK_ARTICLES`):**
+```js
+[
+  { id: 1, nom: 'LARDONS FUMÉS 200G',  prix: 2.15, matchedNom: 'Lardons' },
+  { id: 2, nom: 'SPAGHETTIS 500G',     prix: 1.05, matchedNom: 'Spaghetti' },
+  { id: 3, nom: 'TOMATES GRAPPE 500G', prix: 2.90, matchedNom: 'Tomates' },
+  { id: 4, nom: 'CRÈME FRAÎCHE 20CL',  prix: 1.40, matchedNom: 'Crème fraiche' },
+  { id: 5, nom: 'THON AU NATUREL',     prix: 3.20, matchedNom: 'Thon' },
+  { id: 6, nom: 'YAOURT NATURE X8',    prix: 2.40, matchedNom: null },
+  { id: 7, nom: 'BEURRE DEMI SEL 250G',prix: 2.30, matchedNom: null },
+  { id: 8, nom: 'POULET FERMIER 1KG',  prix: 8.50, matchedNom: 'Poulet' },
+  { id: 9, nom: 'SAUMON ATLANTIQUE',   prix: 6.80, matchedNom: 'Saumon' },
+  { id: 10,nom: 'MAÏS DOUX 285G',      prix: 1.20, matchedNom: 'Maïs' },
+]
+```
+When the real OCR is implemented, replace `MOCK_ARTICLES` with the API response (same shape).
+
+### Parametres (`/plats`, `/rayons`, `/ingredients`)
+
+Single component serving three routes. Active tab detected via `useLocation().pathname`.
+
+**Tab Plats (`/plats`):**
+- Add meal (name + category selector). Categories: PÂTES | Dej | Dîner | Élaborés | Conserves | Surgelés | Autres.
+- Meals grouped by category in `DroppableCategorie` zones — drag a meal card to change its category.
+- Click a meal to open its ingredient editor (desktop: right panel; mobile: inline below).
+- Per ingredient: qty/unit editor + rayon select (inline) + rename + delete.
+- Add ingredient form per meal.
+
+**Tab Rayons (`/rayons`):**
+- Store selector (left, or top on mobile).
+- For active store: draggable section list (`DraggableRayonRow` with DnD reorder).
+- Inline rename + delete per section. Add section form at the bottom.
+
+**Tab Ingrédients (`/ingredients`):**
+- Aggregates all known ingredients: from `plats`, from `espacesLibres` (excluding `platId` entries), from `standaloneIngredients`.
+- Add ingredient form: name + rayon + `SplitMini` Tricount default (👦/👥/👩).
+- Search bar (filters by name).
+- Ingredients grouped by section in `DroppableSection` zones.
+- **DnD:** drag ingredient tags between sections to reassign `setRayon`. During drag, sections collapse to condensed headers-only.
+- Each ingredient row (`IngredientTag`) shows: drag handle, name, `SplitMini` toggle (reads/writes `getSplit`/`setSplit`), rename (inline input), delete (with confirmation dialog).
+- **Suppression en cascade:** deleting an ingredient calls both `supprimerIngredientDePlats` (removes from all recipes) and `supprimerIngredientDansRayons` (removes from all store mappings + standalone list).
+- `DragOverlay` shows a rotated floating ghost tag during drag.
 
 ### ListeCourses (`/liste`)
-Read-only. Aggregates all 38+ meals' ingredients (regardless of weekly planning), grouped by section for the active store, alphabetically within each section. Orphaned ingredients shown in orange at the bottom with a hint to assign sections.
-
----
-
-## Component: Header (`src/components/Header.jsx`)
-
-Persistent sticky header on all pages. Contains:
-- "Ricourses" logo → `/`
-- NavLink: "Planning" → `/planning`
-- NavLink: "Paramètres" → `/parametres`
-- "Scanner" button (disabled, placeholder for future feature)
-- `<select>` store picker → `setMagasinActif` from `useMagasinContext()`
-
-Active NavLink is highlighted with green styling.
+Read-only (not in main nav). Aggregates all 38+ meals' ingredients regardless of weekly planning, grouped by section for the active store, alphabetically within. Orphaned ingredients shown in orange at the bottom.
 
 ---
 
@@ -229,9 +319,10 @@ Active NavLink is highlighted with green styling.
 - **Tailwind only:** No CSS modules or styled-components. `App.css` is unused.
 - **Functional components only.** No class components.
 - **Immutable state:** `prev.map(...)` and spread operators everywhere. Never mutate state directly.
-- **Ingredient names are case-insensitive:** `getRayon`/`setRayon` lowercase the key. Mapping keys always stored lowercase.
+- **Ingredient names are case-insensitive:** `getRayon`/`setRayon`/`getSplit`/`setSplit` always lowercase the key. Keys stored lowercase.
 - **No backend:** Client-side only.
-- **DnD:** `@dnd-kit/core` used in `Planning.jsx` only (PointerSensor + TouchSensor).
+- **DnD (`@dnd-kit/core`):** Used in `Planning.jsx` (ingredient→section drag), `Parametres.jsx` (meal→category drag, ingredient→section drag, section reorder). Always `PointerSensor { distance: 8 }` + `TouchSensor { delay: 250, tolerance: 5 }`.
+- **Tricount:** `'me'` = Moi (blue), `'both'` = 50/50 (green), `'ali'` = Ali (pink). Default is always `'both'`.
 
 ---
 
@@ -248,18 +339,19 @@ Auto-deployed on push to `main` via `.github/workflows/deploy.yml`:
 
 ## Next Steps (Roadmap)
 
-- **Liste de courses — tous les rayons affichés :** Afficher tous les rayons du magasin actif dans la liste de courses, même ceux sans ingrédient (section vide avec état élégant). Actuellement seuls les rayons non vides sont rendus.
-- **DnD depuis ListeCourses :** Permettre le drag & drop pour réassigner un ingrédient à un autre rayon directement depuis `/liste` (le Planning a déjà ce DnD).
-- **Refonte Paramètres :** Refonte de l'onglet Plats avec une UI par tags/rayons (ingrédients groupés par rayon plutôt que par plat).
+- **Remplacer le Mock OCR du Scanner :** Intégrer une vraie solution de lecture d'image (ex: API Vision — Google Cloud Vision, AWS Textract, ou Mistral OCR). Remplacer `MOCK_ARTICLES` dans `Scanner.jsx` par l'appel API réel. La shape de données attendue reste la même : `{ id, nom, prix, matchedNom }`.
+- **Migration vers Supabase :** Remplacer le stockage `localStorage` par une vraie base de données Supabase (PostgreSQL). Ajouter authentification utilisateur, synchronisation multi-appareils, et partage de planning entre utilisateurs du foyer.
+- **DnD depuis ListeCourses :** Permettre le drag & drop pour réassigner un ingrédient depuis `/liste` (le Planning a déjà ce DnD).
+- **defaultSplit dans l'onglet Plats :** Afficher et éditer le `defaultSplit` directement depuis la fiche d'un plat (actuellement uniquement dans l'onglet Ingrédients).
 
 ---
 
 ## Adding New Features
 
 **New page:**
-1. `src/pages/NouveauePage.jsx`
+1. `src/pages/NouvellePage.jsx`
 2. `<Route>` in `src/App.jsx`
-3. NavLink in `src/components/Header.jsx`
+3. `NavLink` in `src/components/Header.jsx`
 
 **New meal icon:** Add Lucide icon name to `src/utils/icones.js`.
 

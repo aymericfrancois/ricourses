@@ -1,25 +1,193 @@
-import { useState, useRef } from 'react'
-import { ScanLine, Upload, Camera, RotateCcw, CheckCircle2, BookmarkPlus, BookmarkCheck } from 'lucide-react'
+import { useState, useRef, useMemo } from 'react'
+import {
+  ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
+  BookmarkPlus, BookmarkCheck, AlertCircle, Trash2, ChevronDown, Undo2,
+} from 'lucide-react'
+import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
+import { usePlats } from '../hooks/usePlats'
 
-// Données simulées — représentatives d'un vrai ticket
-const MOCK_ARTICLES = [
-  { id: 1, nom: 'LARDONS FUMÉS 200G', prix: 2.15, matchedNom: 'Lardons' },
-  { id: 2, nom: 'SPAGHETTIS 500G', prix: 1.05, matchedNom: 'Spaghetti' },
-  { id: 3, nom: 'TOMATES GRAPPE 500G', prix: 2.90, matchedNom: 'Tomates' },
-  { id: 4, nom: 'CRÈME FRAÎCHE 20CL', prix: 1.40, matchedNom: 'Crème fraiche' },
-  { id: 5, nom: 'THON AU NATUREL', prix: 3.20, matchedNom: 'Thon' },
-  { id: 6, nom: 'YAOURT NATURE X8', prix: 2.40, matchedNom: null },
-  { id: 7, nom: 'BEURRE DEMI SEL 250G', prix: 2.30, matchedNom: null },
-  { id: 8, nom: 'POULET FERMIER 1KG', prix: 8.50, matchedNom: 'Poulet' },
-  { id: 9, nom: 'SAUMON ATLANTIQUE', prix: 6.80, matchedNom: 'Saumon' },
-  { id: 10, nom: 'MAÏS DOUX 285G', prix: 1.20, matchedNom: 'Maïs' },
+// ---- Helpers OCR ----
+
+function normaliser(str) {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Mots-clés : une ligne contenant l'un d'eux est ignorée
+const MOTS_CLES_IGNORER = [
+  'total', 'cb', 'carte', 'visa', 'tva', 'merci', 'paye', 'especes',
+  'rendu', 'dont', 'remise', 'reduction', 'mastercard', 'cheque',
+  'siret', 'siren', 'fidelite', 'bienvenue', 'caisse', 'monnaie',
+  'ticket', 'reglement', 'solde', 'promo', 'avoir', 'rabais',
+  'nb article', 'subtotal',
 ]
 
+/**
+ * Parsing « tout-terrain » — Leclerc / Lidl / Carrefour.
+ *
+ * Améliorations :
+ *  - Nettoyage des caractères parasites en tête (>>, ., +, -, *)
+ *  - Catégories ">> LAIT" → mémorise la catégorie courante (receiptCategory)
+ *  - Multiligne : si une ligne-prix commence par un multiplicateur (2 X, 2 À…),
+ *    le nom de l'article est dans la ligne précédente (rawLines[i-1])
+ *  - Pas de déduplication : deux articles identiques = deux entrées distinctes
+ */
+function parserTicket(texte) {
+  const rawLines = texte.split('\n')
+  const articles = []
+  let currentCategory = null
+  let previousTextLine = null // dernière ligne de texte sans prix (pour le multiligne)
+
+  for (let i = 0; i < rawLines.length; i++) {
+    let trimmed = rawLines[i].trim()
+    if (trimmed.length < 3) { previousTextLine = null; continue }
+
+    // ── Catégories : lignes qui commencent par ">>"
+    const catMatch = trimmed.match(/^>>+\s*(.+)/)
+    if (catMatch) {
+      currentCategory = catMatch[1].trim().toUpperCase()
+      previousTextLine = null
+      continue
+    }
+
+    // ── Nettoyage des caractères parasites en début de ligne
+    trimmed = trimmed.replace(/^[>.*+\-]+\s*/, '')
+
+    // ── Supprimer TVA% en début de ligne (Carrefour : "5.5% ")
+    trimmed = trimmed.replace(/^\d{1,2}[.,]\d{1,2}\s*%\s*/, '')
+
+    if (trimmed.length < 3) { previousTextLine = null; continue }
+
+    // ── Filtrage strict
+    const lower = trimmed.toLowerCase()
+    if (MOTS_CLES_IGNORER.some(kw => lower.includes(kw))) {
+      previousTextLine = null
+      continue
+    }
+
+    // Chercher tous les nombres à 2 décimales dans la ligne
+    const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,\.]\d{2})/g)]
+    if (allPrices.length === 0) {
+      // Pas de prix → c'est peut-être un nom d'article pour la ligne suivante
+      previousTextLine = trimmed
+      continue
+    }
+
+    // Le DERNIER nombre à 2 décimales = prix total
+    const lastPriceMatch = allPrices[allPrices.length - 1]
+    const prix = parseFloat(lastPriceMatch[1].replace(',', '.'))
+
+    // Exclure les prix négatifs et les aberrations
+    if (prix <= 0 || prix > 500) { previousTextLine = null; continue }
+
+    // ── Correctif multiplicateur : "2 X 1.35€ 2.70" / "2 À 1.35 2.70"
+    // Si la ligne commence par un multiplicateur, le nom est dans la ligne précédente brute
+    const isMultiplierLine = /^\d+\s*[xXàÀ*]/.test(trimmed)
+    let nom
+
+    if (isMultiplierLine) {
+      // Récupérer le nom depuis la ligne brute précédente
+      const prevRaw = i > 0 ? rawLines[i - 1].trim() : ''
+      nom = prevRaw
+        .replace(/^\d{5,}\s*/, '')
+        .replace(/\d+\s*[xX×]\s*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (nom.length < 2) { previousTextLine = null; continue }
+    } else {
+      // Tout ce qui est AVANT le premier prix = nom de l'article
+      const firstPriceIndex = allPrices[0].index
+      nom = trimmed.slice(0, firstPriceIndex).trim()
+
+      // Nettoyer le nom
+      nom = nom.replace(/^\d{5,}\s*/, '')        // codes-barres numériques
+      nom = nom.replace(/\d+\s*[xX×]\s*/g, '')   // "2x" "3 x" quantités
+      nom = nom.replace(/\s+/g, ' ').trim()
+
+      // ── Multiligne : si le nom est vide ou trop court, utiliser la ligne précédente
+      if (nom.length < 2 || /^\d+$/.test(nom)) {
+        if (previousTextLine && previousTextLine.length >= 2) {
+          nom = previousTextLine
+        } else {
+          previousTextLine = null
+          continue
+        }
+      }
+    }
+
+    const article = {
+      id: crypto.randomUUID(),
+      nom: nom.toUpperCase(),
+      prix,
+      matchedNom: null,
+      receiptCategory: currentCategory,
+      ignored: false,
+    }
+    console.log('Ligne brute :', rawLines[i].trim(), '-> Article extrait :', { name: article.nom, price: article.prix, cat: article.receiptCategory })
+    articles.push(article)
+    previousTextLine = null
+  }
+
+  return articles
+}
+
+/**
+ * Matching intelligent : alias d'abord, puis fuzzy.
+ *
+ * Les alias (ocrAliases) sont des paires exactes apprises manuellement :
+ *   { "coeur laitue": "Salade", "daddy poudre sachet": "Sucre" }
+ *
+ * Le fuzzy match ne matche que des mots ENTIERS (pas de "Lait" dans "Laitue")
+ * en utilisant des frontières de mots.
+ */
+function trouverCorrespondance(nomArticle, ingredientNames, getOcrAlias) {
+  // 1. Vérifier les alias appris
+  const alias = getOcrAlias(nomArticle)
+  if (alias) return alias
+
+  const normArticle = normaliser(nomArticle)
+
+  // 2. Inclusion par mots entiers (word-boundary safe)
+  for (const ing of ingredientNames) {
+    const normIng = normaliser(ing)
+    if (normIng.length < 3) continue
+    const escaped = normIng.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`(?:^|\\s|\\b)${escaped}s?(?:\\s|$|\\b)`)
+    if (re.test(normArticle)) return ing
+  }
+
+  // 3. Intersection de mots significatifs (≥ 5 chars pour éviter les faux positifs)
+  const wordsArticle = normArticle.split(' ').filter(w => w.length >= 5)
+  if (wordsArticle.length > 0) {
+    for (const ing of ingredientNames) {
+      const wordsIng = normaliser(ing).split(' ').filter(w => w.length >= 5)
+      if (wordsIng.length > 0 && wordsIng.every(w => wordsArticle.includes(w))) return ing
+    }
+  }
+
+  return null
+}
+
+const STATUS_LABELS = {
+  'loading tesseract core': 'Chargement du moteur OCR…',
+  'initializing tesseract': 'Initialisation…',
+  'loading language traineddata': 'Téléchargement du dictionnaire français…',
+  'initializing api': 'Préparation…',
+  'recognizing text': 'Lecture du ticket…',
+}
+
+// ---- Composants UI ----
+
 const SPLIT_OPTS = [
-  { val: 'me', label: 'Moi', emoji: '👦', active: 'bg-blue-500 text-white', dot: 'bg-blue-400' },
+  { val: 'me',   label: 'Moi',   emoji: '👦', active: 'bg-blue-500 text-white',  dot: 'bg-blue-400' },
   { val: 'both', label: '50/50', emoji: '👥', active: 'bg-green-500 text-white', dot: 'bg-green-400' },
-  { val: 'ali', label: 'Ali', emoji: '👩', active: 'bg-pink-500 text-white', dot: 'bg-pink-400' },
+  { val: 'ali',  label: 'Ali',   emoji: '👩', active: 'bg-pink-500 text-white',  dot: 'bg-pink-400' },
 ]
 
 const BORDER_COLORS = { me: 'border-l-blue-400', both: 'border-l-green-300', ali: 'border-l-pink-400' }
@@ -43,11 +211,202 @@ function SplitToggle({ value, onChange }) {
   )
 }
 
-function Scanner() {
-  const { getSplit, setSplit } = useMagasinContext()
+// ---- Sélecteur d'ingrédient (dropdown pour correction manuelle) ----
 
-  // Articles dont le split vient d'être mémorisé (feedback visuel bref)
+function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngredient }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+
+  const filtered = query.trim()
+    ? suggestions.filter(n => n.toLowerCase().includes(query.toLowerCase())).slice(0, 15)
+    : suggestions.slice(0, 20)
+
+  // Fermer au clic extérieur
+  useState(() => {
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  })
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => { setOpen(true); setQuery('') }}
+        className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-0.5 hover:text-green-600 transition-colors group"
+      >
+        {currentMatch ? (
+          <span>→ <span className="font-medium text-gray-500 group-hover:text-green-600">{currentMatch}</span></span>
+        ) : (
+          <span className="italic">Associer un ingrédient…</span>
+        )}
+        <ChevronDown size={9} className="shrink-0" />
+      </button>
+    )
+  }
+
+  return (
+    <div ref={ref} className="relative mt-1">
+      <input
+        autoFocus
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Chercher un ingrédient…"
+        className="w-full rounded border border-green-400 bg-white px-2 py-1 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-green-500"
+      />
+      <ul className="absolute z-40 top-full left-0 right-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+        {currentMatch && (
+          <li
+            onMouseDown={e => { e.preventDefault(); onSelect(null); setOpen(false) }}
+            className="px-2 py-1.5 text-xs text-red-400 hover:bg-red-50 cursor-pointer border-b border-gray-100"
+          >
+            ✕ Dissocier
+          </li>
+        )}
+        {filtered.map(nom => (
+          <li
+            key={nom}
+            onMouseDown={e => { e.preventDefault(); onSelect(nom); setOpen(false) }}
+            className={`px-2 py-1.5 text-xs cursor-pointer hover:bg-green-50 hover:text-green-700 transition-colors ${nom === currentMatch ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'}`}
+          >
+            {nom}
+          </li>
+        ))}
+        {/* Option création à la volée */}
+        {query.trim().length >= 2 && !suggestions.some(n => n.toLowerCase() === query.trim().toLowerCase()) && (
+          <li
+            onMouseDown={e => {
+              e.preventDefault()
+              const newNom = query.trim()
+              onCreateIngredient(newNom)
+              onSelect(newNom)
+              setOpen(false)
+            }}
+            className="px-2 py-1.5 text-xs text-green-600 hover:bg-green-50 cursor-pointer border-t border-gray-100 font-medium"
+          >
+            ➕ Créer « {query.trim()} »
+          </li>
+        )}
+        {filtered.length === 0 && query.trim().length < 2 && (
+          <li className="px-2 py-2 text-xs text-gray-400 italic">Aucun résultat</li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+// ---- Page Scanner ----
+
+function Scanner() {
+  const { getSplit, setSplit, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias } = useMagasinContext()
+  const { plats } = usePlats()
+
+  const [step, setStep] = useState('capture')
+  const [imagePreview, setImagePreview] = useState(null)
+  const [imageFile, setImageFile] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [articles, setArticles] = useState([])
+  const [articleSplits, setArticleSplits] = useState({})
+  const [ocrProgress, setOcrProgress] = useState(0)
+  const [ocrStatus, setOcrStatus] = useState('')
   const [recentlySaved, setRecentlySaved] = useState(new Set())
+
+  const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
+
+  // Noms d'ingrédients triés pour les dropdowns
+  const ingredientNames = useMemo(() => {
+    const seen = new Set()
+    plats.forEach(p => p.ingredients.forEach(i => seen.add(i.nom)))
+    standaloneIngredients.forEach(nom => seen.add(nom))
+    return [...seen].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [plats, standaloneIngredients])
+
+  function handleFileSelected(file) {
+    if (!file || !file.type.startsWith('image/')) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    handleFileSelected(e.dataTransfer.files?.[0])
+  }
+
+  async function handleAnalyser() {
+    if (!imageFile) return
+    setStep('loading')
+    setOcrProgress(0)
+    setOcrStatus('')
+
+    try {
+      const result = await Tesseract.recognize(imageFile, 'fra', {
+        logger: m => {
+          setOcrStatus(m.status)
+          if (m.status === 'recognizing text') {
+            setOcrProgress(Math.round(m.progress * 100))
+          }
+        },
+      })
+
+      const extracted = parserTicket(result.data.text).map(a => ({
+        ...a,
+        matchedNom: trouverCorrespondance(a.nom, ingredientNames, getOcrAlias),
+      }))
+
+      const initial = {}
+      extracted.forEach(a => {
+        initial[a.id] = a.matchedNom ? getSplit(a.matchedNom) : 'both'
+      })
+
+      setArticles(extracted)
+      setArticleSplits(initial)
+      setStep(extracted.length > 0 ? 'resultat' : 'erreur')
+    } catch (err) {
+      console.error('Erreur OCR :', err)
+      setStep('erreur')
+    }
+  }
+
+  function handleReset() {
+    setStep('capture')
+    setImagePreview(null)
+    setImageFile(null)
+    setArticles([])
+    setArticleSplits({})
+    setOcrProgress(0)
+    setOcrStatus('')
+  }
+
+  function setArticleSplit(id, val) {
+    setArticleSplits(prev => ({ ...prev, [id]: val }))
+  }
+
+  // Soft delete : bascule ignored au lieu de supprimer
+  function toggleIgnored(id) {
+    setArticles(prev => prev.map(a =>
+      a.id === id ? { ...a, ignored: !a.ignored } : a
+    ))
+  }
+
+  // Correction manuelle du matching + apprentissage alias
+  function corrigerMatch(articleId, nouvelIngredient) {
+    setArticles(prev => prev.map(a => {
+      if (a.id !== articleId) return a
+      if (nouvelIngredient) setOcrAlias(a.nom, nouvelIngredient)
+      return { ...a, matchedNom: nouvelIngredient }
+    }))
+    if (nouvelIngredient) {
+      setArticleSplits(prev => ({ ...prev, [articleId]: getSplit(nouvelIngredient) }))
+    }
+  }
+
+  // Création d'un ingrédient à la volée depuis le scanner
+  function creerIngredient(nom) {
+    ajouterIngredientStandalone(nom, null)
+  }
 
   function memoriserDefaut(article) {
     const val = articleSplits[article.id] ?? 'both'
@@ -58,50 +417,10 @@ function Scanner() {
     }), 1500)
   }
 
-  const [step, setStep] = useState('capture') // 'capture' | 'loading' | 'resultat'
-  const [imagePreview, setImagePreview] = useState(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [articleSplits, setArticleSplits] = useState({})
-
-  const fileInputRef = useRef(null)
-  const cameraInputRef = useRef(null)
-
-  function handleFileSelected(file) {
-    if (!file || !file.type.startsWith('image/')) return
-    setImagePreview(URL.createObjectURL(file))
-  }
-
-  function handleDrop(e) {
-    e.preventDefault()
-    setDragOver(false)
-    handleFileSelected(e.dataTransfer.files?.[0])
-  }
-
-  function handleAnalyser() {
-    setStep('loading')
-    setTimeout(() => {
-      const initial = {}
-      MOCK_ARTICLES.forEach(a => {
-        initial[a.id] = a.matchedNom ? getSplit(a.matchedNom) : 'both'
-      })
-      setArticleSplits(initial)
-      setStep('resultat')
-    }, 2000)
-  }
-
-  function handleReset() {
-    setStep('capture')
-    setImagePreview(null)
-    setArticleSplits({})
-  }
-
-  function setArticleSplit(id, val) {
-    setArticleSplits(prev => ({ ...prev, [id]: val }))
-  }
-
-  // ---- Calcul Tricount ----
-  const totalTicket = MOCK_ARTICLES.reduce((sum, a) => sum + a.prix, 0)
-  const partMoi = MOCK_ARTICLES.reduce((sum, a) => {
+  // Calcul Tricount (articles ignorés exclus)
+  const articlesActifs = articles.filter(a => !a.ignored)
+  const totalTicket = articlesActifs.reduce((sum, a) => sum + a.prix, 0)
+  const partMoi = articlesActifs.reduce((sum, a) => {
     const split = articleSplits[a.id] ?? 'both'
     if (split === 'me') return sum + a.prix
     if (split === 'both') return sum + a.prix / 2
@@ -109,7 +428,7 @@ function Scanner() {
   }, 0)
   const partAli = totalTicket - partMoi
 
-  // ---- ÉTAPE 1 : Capture ----
+  // ---- ÉTAPE 1 : Capture + Loading ----
   if (step === 'capture' || step === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -132,13 +451,10 @@ function Scanner() {
             onDragLeave={() => setDragOver(false)}
             onClick={() => !imagePreview && step !== 'loading' && fileInputRef.current?.click()}
             className={`rounded-2xl border-2 border-dashed transition-all overflow-hidden ${
-              imagePreview
-                ? 'border-green-300 bg-green-50'
-                : dragOver
-                  ? 'border-green-400 bg-green-50'
-                  : step === 'loading'
-                    ? 'border-gray-200 bg-white'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
+              imagePreview ? 'border-green-300 bg-green-50'
+              : dragOver ? 'border-green-400 bg-green-50'
+              : step === 'loading' ? 'border-gray-200 bg-white'
+              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
             }`}
           >
             {imagePreview ? (
@@ -146,7 +462,7 @@ function Scanner() {
                 <img src={imagePreview} alt="Ticket" className="w-full max-h-72 object-contain" />
                 {step !== 'loading' && (
                   <button
-                    onClick={e => { e.stopPropagation(); setImagePreview(null) }}
+                    onClick={e => { e.stopPropagation(); setImagePreview(null); setImageFile(null) }}
                     className="absolute top-2 right-2 bg-white rounded-full p-1.5 shadow-md text-gray-500 hover:text-red-500 transition-colors"
                   >
                     <RotateCcw size={14} />
@@ -166,7 +482,6 @@ function Scanner() {
             )}
           </div>
 
-          {/* Boutons sélection image */}
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
             onChange={e => handleFileSelected(e.target.files?.[0])} />
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -174,48 +489,55 @@ function Scanner() {
 
           {!imagePreview && step !== 'loading' && (
             <div className="flex gap-3 mt-4">
-              <button
-                onClick={() => cameraInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => cameraInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                 <Camera size={16} />Caméra
               </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => fileInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                 <Upload size={16} />Galerie
               </button>
             </div>
           )}
 
-          {/* Bouton Analyser */}
           <button
             onClick={handleAnalyser}
-            disabled={!imagePreview || step === 'loading'}
+            disabled={!imageFile || step === 'loading'}
             className={`mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-all ${
-              imagePreview && step !== 'loading'
+              imageFile && step !== 'loading'
                 ? 'bg-green-600 text-white hover:bg-green-700 shadow-md shadow-green-100 active:scale-[0.98]'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
             {step === 'loading' ? (
               <>
-                <span className="w-4 h-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-                Lecture du ticket en cours...
+                <span className="w-4 h-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin shrink-0" />
+                <span className="truncate">{STATUS_LABELS[ocrStatus] ?? 'Démarrage…'}</span>
               </>
             ) : (
-              <>
-                <ScanLine size={16} />
-                Analyser le ticket
-              </>
+              <><ScanLine size={16} />Analyser le ticket</>
             )}
           </button>
 
           {step === 'loading' && (
-            <p className="text-center text-xs text-gray-400 mt-3 animate-pulse">
-              Extraction des articles et des prix…
-            </p>
+            <div className="mt-3 space-y-1.5">
+              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                {ocrStatus === 'recognizing text' ? (
+                  <div className="bg-green-500 h-full rounded-full transition-all duration-300"
+                    style={{ width: `${ocrProgress}%` }} />
+                ) : (
+                  <div className="h-full w-2/5 bg-green-300 rounded-full animate-pulse" />
+                )}
+              </div>
+              {ocrStatus === 'recognizing text' && (
+                <p className="text-center text-xs text-gray-400">{ocrProgress}%</p>
+              )}
+              {ocrStatus === 'loading language traineddata' && (
+                <p className="text-center text-[10px] text-gray-400">
+                  Première utilisation : téléchargement du dictionnaire (~10 Mo)
+                </p>
+              )}
+            </div>
           )}
 
         </main>
@@ -223,30 +545,53 @@ function Scanner() {
     )
   }
 
-  // ---- ÉTAPE 2 : Résultats ----
-  const nbMoi = MOCK_ARTICLES.filter(a => articleSplits[a.id] === 'me').length
-  const nbAli = MOCK_ARTICLES.filter(a => articleSplits[a.id] === 'ali').length
-  const nbBoth = MOCK_ARTICLES.filter(a => (articleSplits[a.id] ?? 'both') === 'both').length
+  // ---- ERREUR ----
+  if (step === 'erreur') {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <main className="max-w-lg mx-auto px-4 py-8">
+          <div className="flex flex-col items-center gap-5 py-16 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center">
+              <AlertCircle size={32} className="text-orange-400" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-700 mb-2">Aucun article reconnu</h2>
+              <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
+                Le texte extrait ne contient pas d'articles avec prix identifiables.
+                Essayez avec une photo plus nette, bien cadrée et éclairée.
+              </p>
+            </div>
+            <button onClick={handleReset}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors">
+              <RotateCcw size={15} />Réessayer
+            </button>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  // ---- ÉTAPE 2 : Résultats + Tricount ----
+  const nbMoi  = articlesActifs.filter(a => articleSplits[a.id] === 'me').length
+  const nbAli  = articlesActifs.filter(a => articleSplits[a.id] === 'ali').length
+  const nbBoth = articlesActifs.filter(a => (articleSplits[a.id] ?? 'both') === 'both').length
+  const nbIgnored = articles.filter(a => a.ignored).length
 
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
-      <main className="max-w-lg mx-auto px-4 py-6">
+      <main className="max-w-3xl mx-auto px-4 py-6">
 
-        {/* En-tête résultats */}
+        {/* En-tête */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <CheckCircle2 size={18} className="text-green-500" />
             <div>
-              <p className="text-sm font-bold text-gray-800">{MOCK_ARTICLES.length} articles reconnus</p>
-              <p className="text-xs text-gray-400">
-                👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}
-              </p>
+              <p className="text-sm font-bold text-gray-800">{articlesActifs.length} articles reconnus{nbIgnored > 0 && <span className="text-gray-400 font-normal"> · {nbIgnored} ignoré{nbIgnored > 1 ? 's' : ''}</span>}</p>
+              <p className="text-xs text-gray-400">👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
             </div>
           </div>
-          <button
-            onClick={handleReset}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={handleReset}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors">
             <RotateCcw size={12} />Nouveau ticket
           </button>
         </div>
@@ -263,7 +608,7 @@ function Scanner() {
 
         {/* Liste des articles */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
-          {MOCK_ARTICLES.map(article => {
+          {articles.map(article => {
             const split = articleSplits[article.id] ?? 'both'
             const defaultSplit = article.matchedNom ? getSplit(article.matchedNom) : 'both'
             const isModified = article.matchedNom && split !== defaultSplit
@@ -271,38 +616,72 @@ function Scanner() {
             return (
               <div
                 key={article.id}
-                className={`flex items-center gap-3 px-4 py-3 border-l-4 transition-colors ${BORDER_COLORS[split]}`}
+                className={`flex items-start gap-3 px-4 py-3 border-l-4 transition-colors ${
+                  article.ignored ? 'border-l-gray-200 opacity-50' : BORDER_COLORS[split]
+                }`}
               >
+                {/* Nom + catégorie + matching */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{article.nom}</p>
-                  {article.matchedNom && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      → reconnu : <span className="font-medium text-gray-500">{article.matchedNom}</span>
-                    </p>
+                  <p className={`text-sm font-medium ${article.ignored ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                    {article.nom}
+                  </p>
+                  {article.receiptCategory && (
+                    <p className="text-[10px] text-gray-300 mt-0.5">{article.receiptCategory}</p>
+                  )}
+                  {!article.ignored && (
+                    <IngredientSelector
+                      currentMatch={article.matchedNom}
+                      suggestions={ingredientNames}
+                      onSelect={nom => corrigerMatch(article.id, nom)}
+                      onCreateIngredient={nom => {
+                        creerIngredient(nom)
+                        setOcrAlias(article.nom, nom)
+                      }}
+                    />
                   )}
                 </div>
-                <span className="text-sm font-bold text-gray-700 tabular-nums shrink-0">
+
+                {/* Prix */}
+                <span className={`text-sm font-bold tabular-nums shrink-0 pt-0.5 ${article.ignored ? 'text-gray-300 line-through' : 'text-gray-700'}`}>
                   {article.prix.toFixed(2)} €
                 </span>
-                <SplitToggle value={split} onChange={val => setArticleSplit(article.id, val)} />
-                {/* Bouton mémoriser — visible seulement si le split local ≠ défaut global */}
-                {justSaved ? (
-                  <span className="flex items-center gap-1 text-[10px] text-green-600 font-medium shrink-0">
-                    <BookmarkCheck size={13} />
-                    <span className="hidden sm:inline">Mémorisé</span>
-                  </span>
-                ) : isModified ? (
-                  <button
-                    onClick={() => memoriserDefaut(article)}
-                    title={`Mémoriser "${split === 'me' ? 'Moi' : split === 'ali' ? 'Ali' : '50/50'}" comme défaut pour ${article.matchedNom}`}
-                    className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-green-600 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg px-1.5 py-1 transition-colors shrink-0"
-                  >
-                    <BookmarkPlus size={12} />
-                    <span className="hidden sm:inline">Mémoriser</span>
-                  </button>
-                ) : (
-                  <span className="w-5 shrink-0" /> // placeholder pour aligner les colonnes
+
+                {/* Split toggle */}
+                {!article.ignored && (
+                  <div className="shrink-0 pt-0.5">
+                    <SplitToggle value={split} onChange={val => setArticleSplit(article.id, val)} />
+                  </div>
                 )}
+
+                {/* Mémoriser / Ignorer */}
+                <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
+                  {!article.ignored && (
+                    <>
+                      {justSaved ? (
+                        <span className="flex items-center gap-1 text-[10px] text-green-600 font-medium">
+                          <BookmarkCheck size={13} />
+                        </span>
+                      ) : isModified ? (
+                        <button
+                          onClick={() => memoriserDefaut(article)}
+                          title={`Mémoriser "${split === 'me' ? 'Moi' : split === 'ali' ? 'Ali' : '50/50'}" pour ${article.matchedNom}`}
+                          className="text-gray-300 hover:text-green-600 transition-colors"
+                        >
+                          <BookmarkPlus size={14} />
+                        </button>
+                      ) : (
+                        <span className="w-3.5" />
+                      )}
+                    </>
+                  )}
+                  <button
+                    onClick={() => toggleIgnored(article.id)}
+                    title={article.ignored ? 'Restaurer cet article' : 'Ignorer cet article'}
+                    className={`transition-colors ${article.ignored ? 'text-gray-400 hover:text-green-500' : 'text-gray-200 hover:text-red-400'}`}
+                  >
+                    {article.ignored ? <Undo2 size={13} /> : <Trash2 size={13} />}
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -310,43 +689,28 @@ function Scanner() {
 
       </main>
 
-      {/* ---- Panneau Tricount fixe en bas ---- */}
+      {/* Panneau Tricount fixe */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-xl z-30">
-        <div className="max-w-lg mx-auto px-4 py-4">
-
+        <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-stretch gap-4">
-
-            {/* Total */}
             <div className="flex-1">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Total ticket</p>
               <p className="text-2xl font-bold text-gray-800 tabular-nums">{totalTicket.toFixed(2)} €</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{MOCK_ARTICLES.length} articles</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{articlesActifs.length} articles</p>
             </div>
-
             <div className="w-px bg-gray-100" />
-
-            {/* Part Moi */}
             <div className="flex-1 text-center">
               <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-0.5">👦 Moi</p>
               <p className="text-2xl font-bold text-blue-600 tabular-nums">{partMoi.toFixed(2)} €</p>
-              <p className="text-[10px] text-blue-400 mt-0.5">
-                {nbMoi} solo + {nbBoth} partagés
-              </p>
+              <p className="text-[10px] text-blue-400 mt-0.5">{nbMoi} solo + {nbBoth} partagés</p>
             </div>
-
             <div className="w-px bg-gray-100" />
-
-            {/* Part Ali */}
             <div className="flex-1 text-center">
               <p className="text-[10px] font-bold text-pink-500 uppercase tracking-widest mb-0.5">👩 Ali</p>
               <p className="text-2xl font-bold text-pink-600 tabular-nums">{partAli.toFixed(2)} €</p>
-              <p className="text-[10px] text-pink-400 mt-0.5">
-                {nbAli} solo + {nbBoth} partagés
-              </p>
+              <p className="text-[10px] text-pink-400 mt-0.5">{nbAli} solo + {nbBoth} partagés</p>
             </div>
-
           </div>
-
         </div>
       </div>
     </div>
