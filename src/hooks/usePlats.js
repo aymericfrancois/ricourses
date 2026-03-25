@@ -114,6 +114,21 @@ export function usePlats() {
     })))
   }
 
+  // Fusionne l'ingrédient B dans A : renomme B→A si A absent, supprime B si A déjà présent
+  function fusionnerIngredients(nomSupprimer, nomConserver) {
+    const keyS = nomSupprimer.toLowerCase()
+    const keyC = nomConserver.toLowerCase()
+    setPlats(prev => prev.map(plat => {
+      const hasC = plat.ingredients.some(i => i.nom.toLowerCase() === keyC)
+      const hasS = plat.ingredients.some(i => i.nom.toLowerCase() === keyS)
+      if (!hasS) return plat
+      if (hasC) {
+        return { ...plat, ingredients: plat.ingredients.filter(i => i.nom.toLowerCase() !== keyS) }
+      }
+      return { ...plat, ingredients: plat.ingredients.map(i => i.nom.toLowerCase() === keyS ? { ...i, nom: nomConserver } : i) }
+    }))
+  }
+
   function supprimerIngredientDePlats(nom) {
     const key = nom.toLowerCase()
     setPlats(prev => prev.map(plat => ({
@@ -141,5 +156,5 @@ export function usePlats() {
     )
   }
 
-  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, updatePlatCategorie, ajouterIngredient, supprimerIngredient, renommerIngredient, renommerPlat, updateIngredient, supprimerIngredientDePlats }
+  return { plats, ajouterPlat, supprimerPlat, updatePlatIcone, updatePlatCategorie, ajouterIngredient, supprimerIngredient, renommerIngredient, renommerPlat, updateIngredient, supprimerIngredientDePlats, fusionnerIngredients }
 }

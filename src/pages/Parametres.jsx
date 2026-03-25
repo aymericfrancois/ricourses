@@ -9,6 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, Trash2, ChevronDown, Pencil, X, Check, Store, GripVertical, Search,
+  GitMerge, ChevronUp,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -179,18 +180,10 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none transition-opacity ${
+      className={`flex items-center gap-2 pl-3 pr-1.5 py-2 rounded-lg border bg-white shadow-sm select-none transition-opacity ${
         isDragging ? 'opacity-50' : ''
       } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
     >
-      <span
-        {...listeners}
-        {...attributes}
-        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
-        aria-label="Déplacer"
-      >
-        <GripVertical size={12} />
-      </span>
       <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'text-gray-700' : 'text-orange-600'}`}>{nom}</span>
       <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
       <button
@@ -216,6 +209,14 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       >
         <X size={10} />
       </button>
+      <span
+        {...listeners}
+        {...attributes}
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors px-1"
+        aria-label="Déplacer"
+      >
+        <GripVertical size={12} />
+      </span>
     </div>
   )
 }
@@ -284,20 +285,10 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
     <div
       ref={setRef}
       style={style}
-      className={`flex items-center gap-2 px-4 py-3 bg-white transition-all ${
+      className={`flex items-center gap-2 pl-4 pr-2 py-3 bg-white transition-all ${
         isDragging ? 'opacity-40 shadow-lg relative z-10' : ''
       } ${isOver && !isDragging ? 'border-t-2 border-green-400' : ''}`}
     >
-      <button
-        {...listeners}
-        {...attributes}
-        type="button"
-        className="touch-none p-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors shrink-0"
-        aria-label="Réordonner"
-      >
-        <GripVertical size={16} />
-      </button>
-
       {editMode ? (
         <input
           autoFocus
@@ -339,6 +330,16 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
           </button>
         </div>
       )}
+
+      <button
+        {...listeners}
+        {...attributes}
+        type="button"
+        className="touch-none p-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors shrink-0"
+        aria-label="Réordonner"
+      >
+        <GripVertical size={16} />
+      </button>
     </div>
   )
 }
@@ -348,6 +349,7 @@ function Parametres() {
   const {
     plats, ajouterPlat, supprimerPlat, renommerPlat, updatePlatCategorie,
     ajouterIngredient, supprimerIngredient, updateIngredient, renommerIngredient, supprimerIngredientDePlats,
+    fusionnerIngredients,
   } = usePlats()
   const {
     magasins, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
@@ -390,6 +392,9 @@ function Parametres() {
   const [nomNouvelIng, setNomNouvelIng] = useState('')
   const [rayonNouvelIng, setRayonNouvelIng] = useState('')
   const [splitNouvelIng, setSplitNouvelIng] = useState('both')
+  const [showMergeModal, setShowMergeModal] = useState(false)
+  const [mergeKeep, setMergeKeep] = useState('')
+  const [mergeRemove, setMergeRemove] = useState('')
 
   // --- État onglet Rayons ---
   const [nouveauRayon, setNouveauRayon] = useState('')
@@ -494,6 +499,16 @@ function Parametres() {
     if (!String(over.id).startsWith('section:')) return
     const targetRayon = String(over.id).slice('section:'.length)
     setRayon(String(active.id), targetRayon === '__unassigned__' ? '' : targetRayon)
+  }
+
+  // ---- Fusion d'ingrédients ----
+  function handleFusion() {
+    if (!mergeKeep || !mergeRemove || mergeKeep === mergeRemove) return
+    fusionnerIngredients(mergeRemove, mergeKeep)
+    supprimerIngredientDansRayons(mergeRemove)
+    setShowMergeModal(false)
+    setMergeKeep('')
+    setMergeRemove('')
   }
 
   // ---- Rayons DnD ----
@@ -773,8 +788,89 @@ function Parametres() {
 
           const sections = rayonsActifs.map(r => ({ nom: r, ings: byRayon[r] ?? [] }))
 
+          // Liste de tous les noms connus pour la modale de fusion
+          const allIngNames = [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+
           return (
             <div className="max-w-2xl">
+              {/* Modale de fusion */}
+              {showMergeModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+                    <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                      <GitMerge size={18} className="text-green-600" />
+                      Fusionner des ingrédients
+                    </h2>
+                    <div className="flex flex-col gap-3">
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Ingrédient à conserver (A)
+                      </label>
+                      <select
+                        value={mergeKeep}
+                        onChange={e => setMergeKeep(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="">— choisir A —</option>
+                        {allIngNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Doublon à supprimer (B)
+                      </label>
+                      <select
+                        value={mergeRemove}
+                        onChange={e => setMergeRemove(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="">— choisir B —</option>
+                        {allIngNames.filter(n => n !== mergeKeep).map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    {mergeKeep && mergeRemove && (
+                      <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                        Toutes les occurrences de <strong>«&nbsp;{mergeRemove}&nbsp;»</strong> dans les recettes seront remplacées par <strong>«&nbsp;{mergeKeep}&nbsp;»</strong>, puis supprimées du catalogue.
+                      </p>
+                    )}
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => { setShowMergeModal(false); setMergeKeep(''); setMergeRemove('') }}
+                        className="px-4 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-100 transition-colors"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleFusion}
+                        disabled={!mergeKeep || !mergeRemove || mergeKeep === mergeRemove}
+                        className="px-4 py-2 rounded-lg bg-green-600 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                      >
+                        Valider la fusion
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Boutons scroll rapide mobile */}
+              <div className="fixed right-4 bottom-20 z-40 flex flex-col gap-2 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-md text-gray-400 hover:text-green-600 opacity-60 hover:opacity-100 transition-all"
+                  aria-label="Haut de page"
+                >
+                  <ChevronUp size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-md text-gray-400 hover:text-green-600 opacity-60 hover:opacity-100 transition-all"
+                  aria-label="Bas de page"
+                >
+                  <ChevronDown size={18} />
+                </button>
+              </div>
+
               {/* Ajout rapide d'ingrédient */}
               <form onSubmit={handleAjouterIngredientStandalone} className="flex flex-wrap gap-2 mb-4">
                 <input
@@ -806,16 +902,27 @@ function Parametres() {
                 </button>
               </form>
 
-              {/* Recherche */}
-              <div className="relative mb-4">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchIngredients}
-                  onChange={e => setSearchIngredients(e.target.value)}
-                  placeholder="Rechercher un ingrédient…"
-                  className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
+              {/* Recherche + bouton fusion */}
+              <div className="flex gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchIngredients}
+                    onChange={e => setSearchIngredients(e.target.value)}
+                    placeholder="Rechercher un ingrédient…"
+                    className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMergeModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 hover:border-green-400 hover:text-green-600 transition-colors shrink-0"
+                  title="Fusionner des doublons"
+                >
+                  <GitMerge size={15} />
+                  <span className="hidden sm:inline">Fusionner</span>
+                </button>
               </div>
 
               {seen.size === 0 ? (
@@ -834,6 +941,18 @@ function Parametres() {
                   onDragCancel={() => setActiveIngId(null)}
                 >
                   <div className="space-y-1">
+                    {/* Non classés toujours en premier */}
+                    {(unassigned.length > 0 || ingDragging) && (
+                      <DroppableSection
+                        sectionId="section:__unassigned__"
+                        title="Non classés"
+                        ings={unassigned}
+                        isUnassigned={true}
+                        onRenameIngredient={handleRenameIngredient}
+                        onDeleteIngredient={handleDeleteIngredient}
+                        condensed={ingDragging}
+                      />
+                    )}
                     {sections.map(({ nom: rayonNom, ings }) => (
                       <DroppableSection
                         key={rayonNom}
@@ -846,17 +965,6 @@ function Parametres() {
                         condensed={ingDragging}
                       />
                     ))}
-                    {(unassigned.length > 0 || ingDragging) && (
-                      <DroppableSection
-                        sectionId="section:__unassigned__"
-                        title="Non classés"
-                        ings={unassigned}
-                        isUnassigned={true}
-                        onRenameIngredient={handleRenameIngredient}
-                        onDeleteIngredient={handleDeleteIngredient}
-                        condensed={ingDragging}
-                      />
-                    )}
                   </div>
 
                   {/* Overlay : élément physique qui suit le curseur */}
