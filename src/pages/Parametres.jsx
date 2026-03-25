@@ -46,10 +46,8 @@ function DraggablePlatCard({ plat, isSelected, onSelect }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
       onClick={() => onSelect(plat.id)}
-      className={`flex items-center gap-2 px-3 py-2 rounded-xl border bg-white shadow-sm cursor-grab active:cursor-grabbing select-none transition-all ${
+      className={`flex items-center gap-2 pl-1 pr-3 py-2 rounded-xl border bg-white shadow-sm select-none transition-all ${
         isDragging ? 'opacity-50 shadow-md z-10 relative' : ''
       } ${
         isSelected
@@ -57,6 +55,14 @@ function DraggablePlatCard({ plat, isSelected, onSelect }) {
           : 'border-gray-200 hover:border-green-300 hover:shadow'
       }`}
     >
+      <span
+        {...listeners}
+        {...attributes}
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors px-1"
+        aria-label="Déplacer"
+      >
+        <GripVertical size={14} />
+      </span>
       <span className="text-base shrink-0 leading-none">{emoji}</span>
       <span className={`text-sm font-medium whitespace-nowrap ${isSelected ? 'text-green-700' : 'text-gray-700'}`}>
         {plat.nom}
@@ -286,7 +292,7 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
         {...listeners}
         {...attributes}
         type="button"
-        className="p-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors shrink-0"
+        className="touch-none p-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors shrink-0"
         aria-label="Réordonner"
       >
         <GripVertical size={16} />
