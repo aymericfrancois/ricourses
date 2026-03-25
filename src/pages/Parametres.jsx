@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   DndContext, DragOverlay,
-  MouseSensor, TouchSensor, useSensor, useSensors,
+  PointerSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable,
   MeasuringStrategy, pointerWithin,
 } from '@dnd-kit/core'
@@ -175,7 +175,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity touch-none ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
         isDragging ? 'opacity-50' : ''
       } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
     >
@@ -386,8 +386,8 @@ function Parametres() {
   const [nouveauRayon, setNouveauRayon] = useState('')
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
 
   // ---- Plats handlers ----
