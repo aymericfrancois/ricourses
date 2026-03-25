@@ -577,19 +577,21 @@ function Planning() {
                         className="flex-1 min-w-28"
                       />
                       <input
-                        type="number" min="0" step="any"
+                        type="text"
                         value={formsLibres[key].quantite}
                         onChange={e => setFormLibre(key, 'quantite', e.target.value)}
-                        placeholder="Qté"
-                        className="w-20 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="Qté (opt.)"
+                        className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
-                      <select
-                        value={formsLibres[key].unite}
-                        onChange={e => setFormLibre(key, 'unite', e.target.value)}
-                        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                      >
-                        {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
+                      {formsLibres[key].quantite && (
+                        <select
+                          value={formsLibres[key].unite}
+                          onChange={e => setFormLibre(key, 'unite', e.target.value)}
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        >
+                          {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      )}
                       <button type="submit" className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
                         <Plus size={14} />Ajouter
                       </button>

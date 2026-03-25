@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   DndContext, DragOverlay,
@@ -9,13 +9,76 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, Trash2, ChevronDown, Pencil, X, Check, Store, GripVertical, Search,
-  GitMerge, ChevronUp,
+  GitMerge,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
+
+// ---- Fast scroll mobile (barre latérale) ----
+const THUMB_H = 44
+function FastScroll() {
+  const [thumbPct, setThumbPct] = useState(0)
+  const trackRef = useRef(null)
+
+  useEffect(() => {
+    function sync() {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      setThumbPct(max > 0 ? Math.min(1, window.scrollY / max) : 0)
+    }
+    sync()
+    window.addEventListener('scroll', sync, { passive: true })
+    return () => window.removeEventListener('scroll', sync)
+  }, [])
+
+  function handleTouchStart(e) {
+    e.stopPropagation()
+    const track = trackRef.current
+    if (!track) return
+    const rect = track.getBoundingClientRect()
+    function move(ev) {
+      ev.preventDefault()
+      const touch = ev.touches[0]
+      const pct = Math.max(0, Math.min(1, (touch.clientY - rect.top - THUMB_H / 2) / (rect.height - THUMB_H)))
+      window.scrollTo({ top: pct * (document.documentElement.scrollHeight - window.innerHeight) })
+    }
+    window.addEventListener('touchmove', move, { passive: false })
+    window.addEventListener('touchend', () => window.removeEventListener('touchmove', move), { once: true })
+  }
+
+  return (
+    <div
+      ref={trackRef}
+      className="fixed right-1.5 top-[18%] bottom-[18%] z-40 md:hidden w-1.5 bg-gray-300/40 rounded-full"
+    >
+      <div
+        className="absolute w-full rounded-full bg-green-500/60 touch-none"
+        style={{ height: THUMB_H, top: `calc(${thumbPct * 100}% - ${thumbPct * THUMB_H}px)` }}
+        onTouchStart={handleTouchStart}
+      />
+    </div>
+  )
+}
+
+// ---- Détection automatique de doublons ----
+function detecterDoublons(noms) {
+  const norm = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+  const pairs = []
+  const vu = new Set()
+  for (let i = 0; i < noms.length; i++) {
+    for (let j = i + 1; j < noms.length; j++) {
+      const a = noms[i], b = noms[j]
+      const na = norm(a), nb = norm(b)
+      if (na === nb || na + 's' === nb || nb + 's' === na || na + 'x' === nb || nb + 'x' === na) {
+        const key = [na, nb].sort().join('|')
+        if (!vu.has(key)) { pairs.push([a, b]); vu.add(key) }
+      }
+    }
+  }
+  return pairs.slice(0, 8)
+}
 
 const CATEGORIES_ORDER = ['PÂTES', 'Dej', 'Dîner', 'Élaborés', 'Conserves', 'Surgelés', 'Autres']
 const CAT_COLORS = {
@@ -404,6 +467,12 @@ function Parametres() {
     useSensor(TouchSensor, { activationConstraint: { delay: 0, tolerance: 5 } }),
   )
 
+  // Noms de tous les ingrédients connus (pour datalist dans les plats)
+  const _ingNamesSet = new Set()
+  for (const p of plats) for (const i of p.ingredients) _ingNamesSet.add(i.nom)
+  for (const nom of standaloneIngredients) _ingNamesSet.add(nom)
+  const allIngredientNames = [..._ingNamesSet].sort((a, b) => a.localeCompare(b, 'fr'))
+
   // ---- Plats handlers ----
   function handleAjouterPlat(e) {
     e.preventDefault()
@@ -607,8 +676,12 @@ function Parametres() {
         )}
 
         <form onSubmit={e => handleAjouterIngredient(e, plat.id)} className="flex flex-wrap gap-1.5 pt-1">
+          <datalist id={`ing-list-${plat.id}`}>
+            {allIngredientNames.map(n => <option key={n} value={n} />)}
+          </datalist>
           <input
             type="text"
+            list={`ing-list-${plat.id}`}
             value={getIngredientForm(plat.id).nom}
             onChange={e => setIngredientField(plat.id, 'nom', e.target.value)}
             placeholder="Ingrédient"
@@ -771,7 +844,7 @@ function Parametres() {
 
           const query = searchIngredients.toLowerCase().trim()
           const filtered = [...seen.entries()]
-            .filter(([key]) => !query || key.includes(query))
+            .filter(([key]) => query === '' || key.includes(query))
             .sort(([a], [b]) => a.localeCompare(b, 'fr'))
 
           const byRayon = {}
@@ -788,8 +861,9 @@ function Parametres() {
 
           const sections = rayonsActifs.map(r => ({ nom: r, ings: byRayon[r] ?? [] }))
 
-          // Liste de tous les noms connus pour la modale de fusion
+          // Liste + doublons potentiels pour la modale de fusion
           const allIngNames = [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+          const suggestionsDoublons = detecterDoublons(allIngNames)
 
           return (
             <div className="max-w-2xl">
@@ -801,6 +875,23 @@ function Parametres() {
                       <GitMerge size={18} className="text-green-600" />
                       Fusionner des ingrédients
                     </h2>
+                    {suggestionsDoublons.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Suggestions</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {suggestionsDoublons.map(([a, b]) => (
+                            <button
+                              key={`${a}|${b}`}
+                              type="button"
+                              onClick={() => { setMergeKeep(a); setMergeRemove(b) }}
+                              className="text-xs px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+                            >
+                              {a} ↔ {b}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-3">
                       <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                         Ingrédient à conserver (A)
@@ -851,25 +942,7 @@ function Parametres() {
                 </div>
               )}
 
-              {/* Boutons scroll rapide mobile */}
-              <div className="fixed right-4 bottom-20 z-40 flex flex-col gap-2 md:hidden">
-                <button
-                  type="button"
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-md text-gray-400 hover:text-green-600 opacity-60 hover:opacity-100 transition-all"
-                  aria-label="Haut de page"
-                >
-                  <ChevronUp size={18} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
-                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white border border-gray-200 shadow-md text-gray-400 hover:text-green-600 opacity-60 hover:opacity-100 transition-all"
-                  aria-label="Bas de page"
-                >
-                  <ChevronDown size={18} />
-                </button>
-              </div>
+              <FastScroll />
 
               {/* Ajout rapide d'ingrédient */}
               <form onSubmit={handleAjouterIngredientStandalone} className="flex flex-wrap gap-2 mb-4">
