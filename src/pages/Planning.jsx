@@ -20,7 +20,7 @@ const BLOCS_LIBRES = [
 ]
 
 // ---- Combobox Plats ----
-function PlatCombobox({ value, onChange, plats }) {
+function PlatCombobox({ value, onChange, plats, onCreatePlat }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -68,8 +68,18 @@ function PlatCombobox({ value, onChange, plats }) {
         </ul>
       )}
       {open && filtered.length === 0 && query.trim() && (
-        <div className="absolute z-30 top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-0.5 px-3 py-2 text-xs text-gray-400 italic">
-          Aucun plat trouvé
+        <div className="absolute z-30 top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-0.5 overflow-hidden">
+          <button
+            onMouseDown={e => {
+              e.preventDefault()
+              const id = onCreatePlat(query.trim())
+              if (id) { onChange(id); setQuery(''); setOpen(false) }
+            }}
+            className="w-full px-3 py-2.5 text-xs text-left text-green-600 hover:bg-green-50 font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Plus size={12} />
+            Créer « {query.trim()} »
+          </button>
         </div>
       )}
     </div>
@@ -230,16 +240,25 @@ function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
     <li
       ref={setNodeRef}
       style={style}
-      onClick={onToggle}
-      {...listeners}
-      {...attributes}
-      className={`flex items-center gap-2 px-3 py-2.5 cursor-grab active:cursor-grabbing select-none transition-all hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+      className={`flex items-center gap-2 px-3 py-2.5 select-none transition-all hover:bg-gray-50 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
     >
-      {/* Checkbox */}
-      <span className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isChecked ? 'border-green-500 bg-green-500' : borderColor}`}>
+      <span
+        {...listeners}
+        {...attributes}
+        className="touch-none cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 shrink-0"
+      >
+        <GripVertical size={14} />
+      </span>
+      <span
+        onClick={onToggle}
+        className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors cursor-pointer ${isChecked ? 'border-green-500 bg-green-500' : borderColor}`}
+      >
         {isChecked && <Check size={10} className="text-white" />}
       </span>
-      <span className={`flex-1 text-sm font-medium transition-colors ${isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+      <span
+        onClick={onToggle}
+        className={`flex-1 text-sm font-medium transition-colors cursor-pointer ${isChecked ? 'line-through text-gray-400' : 'text-gray-800'}`}
+      >
         {item.nom}
       </span>
       <span className={`text-sm tabular-nums transition-colors ${isChecked ? 'text-gray-300' : 'text-gray-400'}`}>
@@ -287,7 +306,7 @@ function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, 
 
 // ---- Page Planning ----
 function Planning() {
-  const { plats } = usePlats()
+  const { plats, ajouterPlat } = usePlats()
   const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
   const {
     semaine, espacesLibres,
@@ -495,12 +514,12 @@ function Planning() {
                   <div className="flex flex-1 gap-2">
                     <div className="flex-1">
                       <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">Midi</label>
-                      <PlatCombobox value={jour.midi} onChange={platId => setMidi(idx, platId)} plats={plats} />
+                      <PlatCombobox value={jour.midi} onChange={platId => setMidi(idx, platId)} plats={plats} onCreatePlat={ajouterPlat} />
                       {renderSlotToggle(jour, idx, 'midi')}
                     </div>
                     <div className="flex-1">
                       <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide block mb-0.5">Soir</label>
-                      <PlatCombobox value={jour.soir} onChange={platId => setSoir(idx, platId)} plats={plats} />
+                      <PlatCombobox value={jour.soir} onChange={platId => setSoir(idx, platId)} plats={plats} onCreatePlat={ajouterPlat} />
                       {renderSlotToggle(jour, idx, 'soir')}
                     </div>
                   </div>

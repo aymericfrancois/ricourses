@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MagasinProvider } from './context/MagasinContext'
 import { PlanningProvider } from './context/PlanningContext'
 import Header from './components/Header'
@@ -22,6 +22,7 @@ function App() {
             <Route path="/rayons" element={<Parametres />} />
             <Route path="/ingredients" element={<Parametres />} />
             <Route path="/scanner" element={<Scanner />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </PlanningProvider>
       </MagasinProvider>
