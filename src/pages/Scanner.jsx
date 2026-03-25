@@ -42,7 +42,6 @@ function parserTicket(texte) {
   const lines = texte.split('\n')
   const articles = []
   let currentCategory = null
-  let lastArticleLineIdx = -1
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]
@@ -104,7 +103,6 @@ function parserTicket(texte) {
             ignored: false,
           })
         }
-        lastArticleLineIdx = i
         continue
       }
     }
@@ -119,11 +117,6 @@ function parserTicket(texte) {
     let cleanedName
 
     if (isMultiplierLine) {
-      // Doublon : si la ligne précédente a déjà créé un article avec le prix unitaire,
-      // on le supprime pour ne garder que la ligne-multiplicateur (avec le total)
-      if (lastArticleLineIdx === i - 1) {
-        articles.pop()
-      }
       // Le vrai nom est dans la ligne brute précédente, on supprime le prix résiduel
       const prevLine = i > 0 ? lines[i - 1].trim() : ''
       cleanedName = prevLine
@@ -157,7 +150,6 @@ function parserTicket(texte) {
       receiptCategory: currentCategory,
       ignored: false,
     })
-    lastArticleLineIdx = i
   }
 
   return articles

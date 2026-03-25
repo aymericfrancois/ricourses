@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
-  useSensor, useSensors, PointerSensor, TouchSensor,
+  useSensor, useSensors, MouseSensor, TouchSensor,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { usePlats } from '../hooks/usePlats'
@@ -328,7 +328,7 @@ function Planning() {
   })
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 

@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   DndContext, DragOverlay,
-  PointerSensor, TouchSensor, useSensor, useSensors,
+  MouseSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
@@ -385,7 +385,7 @@ function Parametres() {
   const [nouveauRayon, setNouveauRayon] = useState('')
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
