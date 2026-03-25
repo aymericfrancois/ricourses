@@ -42,6 +42,7 @@ function parserTicket(texte) {
   const lines = texte.split('\n')
   const articles = []
   let currentCategory = null
+  let lastArticleLineIdx = -1
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]
@@ -55,7 +56,7 @@ function parserTicket(texte) {
     if (MOTS_CLES_IGNORER.some(kw => lower.includes(kw))) continue
 
     // ── Détection de prix sur cette ligne
-    const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,\.]\d{2})/g)]
+    const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,.]\d{2})/g)]
     const hasPrice = allPrices.length > 0
 
     // ── Lignes ">>" sans prix → catégorie de rayon
@@ -70,6 +71,44 @@ function parserTicket(texte) {
     // ── Pas de prix → on passe sans stocker de contexte
     if (!hasPrice) continue
 
+    // ── Détection de ligne-multiplicateur (ex: "2 X 1.35 2.70")
+    const isMultiplierLine = /^\s*\d+\s*[xXàÀ*]/.test(trimmed)
+
+    // ── Multi-article : si ≥ 2 prix et pas une ligne-multiplicateur,
+    //    on tente de découper en articles distincts (OCR a fusionné 2 lignes)
+    if (allPrices.length >= 2 && !isMultiplierLine) {
+      const segments = []
+      for (let p = 0; p < allPrices.length; p++) {
+        const nameStart = p === 0 ? 0 : allPrices[p - 1].index + allPrices[p - 1][0].length
+        const rawSegName = trimmed.slice(nameStart, allPrices[p].index)
+        const segName = rawSegName
+          .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
+          .replace(/^\d{5,}\s*/, '')
+          .replace(/\d+\s*[xX×]\s*/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+        const segPrix = parseFloat(allPrices[p][0].replace(',', '.'))
+        if (segName.length >= 2 && /[a-zA-ZÀ-ÿ]/.test(segName) && segPrix > 0 && segPrix <= 500) {
+          segments.push({ name: segName, price: segPrix })
+        }
+      }
+      if (segments.length >= 2) {
+        for (const seg of segments) {
+          console.log('LIGNE LUE (MULTI) :', raw, '--> SEGMENT AJOUTÉ :', seg.name, seg.price)
+          articles.push({
+            id: crypto.randomUUID(),
+            nom: seg.name.toUpperCase(),
+            prix: seg.price,
+            matchedNom: null,
+            receiptCategory: currentCategory,
+            ignored: false,
+          })
+        }
+        lastArticleLineIdx = i
+        continue
+      }
+    }
+
     // ── Prix total = dernier nombre à 2 décimales
     const lastPriceMatch = allPrices[allPrices.length - 1]
     const prix = parseFloat(lastPriceMatch[1].replace(',', '.'))
@@ -79,14 +118,17 @@ function parserTicket(texte) {
     // ── Extraction du nom
     let cleanedName
 
-    // Seule exception multiligne : ligne-multiplicateur (ex: "2 X 1.35 2.70")
-    const isMultiplierLine = /^\s*\d+\s*[xXàÀ*]/.test(trimmed)
-
     if (isMultiplierLine) {
-      // Le vrai nom est dans la ligne brute précédente
+      // Doublon : si la ligne précédente a déjà créé un article avec le prix unitaire,
+      // on le supprime pour ne garder que la ligne-multiplicateur (avec le total)
+      if (lastArticleLineIdx === i - 1) {
+        articles.pop()
+      }
+      // Le vrai nom est dans la ligne brute précédente, on supprime le prix résiduel
       const prevLine = i > 0 ? lines[i - 1].trim() : ''
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
+        .replace(/(-?\d{1,4}[,.]\d{2})\s*[A-Za-z]?\s*$/, '') // supprime prix + éventuelle lettre de taxe en fin
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
         .trim()
@@ -115,6 +157,7 @@ function parserTicket(texte) {
       receiptCategory: currentCategory,
       ignored: false,
     })
+    lastArticleLineIdx = i
   }
 
   return articles

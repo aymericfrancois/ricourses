@@ -45,11 +45,13 @@ export function usePlats() {
 
   function ajouterPlat(nom, categorie = 'Autres') {
     const trimmed = nom.trim()
-    if (!trimmed) return
+    if (!trimmed) return null
+    const id = crypto.randomUUID()
     setPlats(prev => [
       ...prev,
-      { id: crypto.randomUUID(), nom: trimmed, icone: 'utensils', ingredients: [], categorie },
+      { id, nom: trimmed, icone: 'utensils', ingredients: [], categorie },
     ])
+    return id
   }
 
   function supprimerPlat(platId) {
