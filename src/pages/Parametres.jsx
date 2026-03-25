@@ -173,13 +173,18 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none transition-opacity ${
         isDragging ? 'opacity-50' : ''
       } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
     >
-      <GripVertical size={12} className="text-gray-300 shrink-0" />
+      <span
+        {...listeners}
+        {...attributes}
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+        aria-label="Déplacer"
+      >
+        <GripVertical size={12} />
+      </span>
       <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'text-gray-700' : 'text-orange-600'}`}>{nom}</span>
       <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
       <button
@@ -231,19 +236,17 @@ function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngred
           <span className="text-green-500 font-normal normal-case ml-auto">↓ déposer ici</span>
         )}
       </h3>
-      {!condensed && (
-        <div className="flex flex-col gap-1.5">
-          {ings.map(({ key, nom: ingNom }) => (
-            <IngredientTag
-              key={key}
-              nom={ingNom}
-              isAssigned={!isUnassigned}
-              onRename={nouveauNom => onRenameIngredient(ingNom, nouveauNom)}
-              onDelete={() => onDeleteIngredient(ingNom)}
-            />
-          ))}
-        </div>
-      )}
+      <div className={`flex flex-col gap-1.5 ${condensed ? 'hidden' : ''}`}>
+        {ings.map(({ key, nom: ingNom }) => (
+          <IngredientTag
+            key={key}
+            nom={ingNom}
+            isAssigned={!isUnassigned}
+            onRename={nouveauNom => onRenameIngredient(ingNom, nouveauNom)}
+            onDelete={() => onDeleteIngredient(ingNom)}
+          />
+        ))}
+      </div>
     </section>
   )
 }
@@ -386,8 +389,8 @@ function Parametres() {
   const [nouveauRayon, setNouveauRayon] = useState('')
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 0, tolerance: 5 } }),
   )
 
   // ---- Plats handlers ----
