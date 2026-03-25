@@ -4,6 +4,7 @@ import {
   DndContext, DragOverlay,
   MouseSensor, TouchSensor, useSensor, useSensors,
   useDraggable, useDroppable,
+  MeasuringStrategy, pointerWithin,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import {
@@ -174,7 +175,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-white shadow-sm select-none cursor-grab active:cursor-grabbing transition-opacity touch-none ${
         isDragging ? 'opacity-50' : ''
       } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
     >
@@ -817,6 +818,8 @@ function Parametres() {
               ) : (
                 <DndContext
                   sensors={sensors}
+                  collisionDetection={pointerWithin}
+                  measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
                   onDragStart={handleIngredientDragStart}
                   onDragEnd={handleIngredientDragEnd}
                   onDragCancel={() => setActiveIngId(null)}
@@ -855,7 +858,7 @@ function Parametres() {
                           transform: 'scale(1.06) rotate(2deg)',
                           boxShadow: '0 12px 32px -4px rgba(0,0,0,0.25), 0 4px 10px -2px rgba(0,0,0,0.15)',
                         }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border bg-white border-green-400 text-gray-700 opacity-95 select-none"
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border bg-white border-green-400 text-gray-700 opacity-95 select-none pointer-events-none"
                       >
                         <span className="truncate max-w-28">{activeIngId}</span>
                         <span className="text-green-500 shrink-0 ml-0.5"><Pencil size={9} /></span>
