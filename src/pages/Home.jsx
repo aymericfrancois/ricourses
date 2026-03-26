@@ -36,11 +36,13 @@ function Home() {
             <Leaf size={28} className="text-green-600 mx-auto mb-2" />
             <p className="font-medium text-gray-700 text-sm">Ingrédients</p>
           </Link>
-          <div className="bg-white rounded-xl shadow p-5 w-36 opacity-40">
+          <Link
+            to="/scanner"
+            className="bg-white rounded-xl shadow p-5 w-36 hover:shadow-md hover:border-green-200 border border-transparent transition-all"
+          >
             <ScanLine size={28} className="text-green-600 mx-auto mb-2" />
             <p className="font-medium text-gray-700 text-sm">Scanner</p>
-            <p className="text-xs text-gray-400 mt-1">Bientôt</p>
-          </div>
+          </Link>
         </div>
       </div>
     </div>

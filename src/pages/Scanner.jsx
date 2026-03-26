@@ -26,6 +26,9 @@ const MOTS_CLES_IGNORER = [
   'siret', 'siren', 'fidelite', 'bienvenue', 'caisse', 'monnaie',
   'ticket', 'reglement', 'solde', 'promo', 'avoir', 'rabais',
   'nb article', 'subtotal',
+  // Lignes bas de ticket Lidl / Carrefour / Leclerc
+  'bancaire', 'restaurant', 'identification', 'sans valeur',
+  'economise', 'nombre de lignes', 'a payer', 'eligible',
 ]
 
 /**
@@ -111,7 +114,17 @@ function parserTicket(texte) {
     const lastPriceMatch = allPrices[allPrices.length - 1]
     const prix = parseFloat(lastPriceMatch[1].replace(',', '.'))
 
-    if (prix <= 0 || prix > 500) continue
+    // ── Ligne de réduction Lidl : prix négatif → appliqué sur l'article précédent
+    if (prix < 0) {
+      if (articles.length > 0) {
+        const prev = articles[articles.length - 1]
+        prev.prix = Math.round(Math.max(0, prev.prix + prix) * 100) / 100
+        console.log('RÉDUCTION appliquée :', prix, 'sur', prev.nom, '→ nouveau prix :', prev.prix)
+      }
+      continue
+    }
+
+    if (prix === 0 || prix > 500) continue
 
     // ── Extraction du nom
     let cleanedName
@@ -121,7 +134,7 @@ function parserTicket(texte) {
       const prevLine = i > 0 ? lines[i - 1].trim() : ''
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
-        .replace(/(-?\d{1,4}[,.]\d{2})\s*[A-Za-z]?\s*$/, '') // supprime prix + éventuelle lettre de taxe en fin
+        .replace(/(-?\d{1,4}[,.]\d{2})\s*[A-Za-z]?\s*$/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
         .trim()
@@ -129,7 +142,6 @@ function parserTicket(texte) {
       // Texte avant le PREMIER prix = nom (chaque ligne est indépendante)
       const firstPriceIndex = allPrices[0].index
       const rawName = trimmed.slice(0, firstPriceIndex)
-      // Nettoyage nucléaire : supprime tout ce qui n'est pas lettre/chiffre au début
       cleanedName = rawName
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/^\d{5,}\s*/, '')       // codes-barres numériques
@@ -140,7 +152,11 @@ function parserTicket(texte) {
 
     console.log('LIGNE LUE :', raw, '--> ACTION :', hasPrice ? 'AJOUTÉ' : 'IGNORÉ', '--> RESULTAT NOM :', cleanedName)
 
+    // ── Nom substantiel : au moins 3 lettres consécutives ET au moins une voyelle
+    // Élimine : "A 5,5%", "B 20%", "GKR", "3921 322529/03/17/01"
     if (!cleanedName || cleanedName.length < 2) continue
+    if (!/[a-zA-ZÀ-ÿ]{3}/.test(cleanedName)) continue
+    if (!/[aeiouAEIOUàâäéèêëîïôöùûüÀÂÄÉÈÊËÎÏÔÖÙÛÜ]/.test(cleanedName)) continue
 
     articles.push({
       id: crypto.randomUUID(),
