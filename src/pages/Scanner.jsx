@@ -56,6 +56,21 @@ function parserTicket(texte) {
     // ── Lignes trop courtes
     if (trimmed.length < 3) continue
 
+    // ── Détection des prix négatifs EN PREMIER (avant tout filtrage)
+    // "Réduction Lidl Plus -0,10" serait éliminée par les mots-clés avant d'atteindre le check.
+    // On extrait ici tous les prix de la ligne, et si l'un est négatif on l'applique immédiatement.
+    const allPricesEarly = [...trimmed.matchAll(/(-?\d{1,4}[,.]\d{2})/g)]
+    const firstNegative = allPricesEarly.find(m => parseFloat(m[1].replace(',', '.')) < 0)
+    if (firstNegative) {
+      const remise = parseFloat(firstNegative[1].replace(',', '.'))
+      if (articles.length > 0) {
+        const lastArticle = articles[articles.length - 1]
+        lastArticle.prix = Number((lastArticle.prix + remise).toFixed(2))
+        console.log('RÉDUCTION :', remise, 'APPLIQUÉE SUR :', lastArticle.nom, '-> NOUVEAU PRIX :', lastArticle.prix)
+      }
+      continue
+    }
+
     // ── Filtrage des mots-clés — comparaison normalisée (accents supprimés)
     const normLigne = normaliser(trimmed)
     if (MOTS_CLES_IGNORER.some(kw => normLigne.includes(kw))) continue
@@ -117,17 +132,7 @@ function parserTicket(texte) {
     const lastPriceMatch = allPrices[allPrices.length - 1]
     const prix = parseFloat(lastPriceMatch[1].replace(',', '.'))
 
-    // ── Ligne de réduction Lidl : prix négatif → appliqué sur l'article précédent
-    if (prix < 0) {
-      if (articles.length > 0) {
-        const prev = articles[articles.length - 1]
-        prev.prix = Math.round(Math.max(0, prev.prix + prix) * 100) / 100
-        console.log('RÉDUCTION appliquée :', prix, 'sur', prev.nom, '→ nouveau prix :', prev.prix)
-      }
-      continue
-    }
-
-    if (prix === 0 || prix > 500) continue
+    if (prix <= 0 || prix > 500) continue
 
     // ── Extraction du nom
     let cleanedName
