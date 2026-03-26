@@ -1,5 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
-import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf } from 'lucide-react'
+import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf, ShoppingCart } from 'lucide-react'
 import { useMagasinContext } from '../context/MagasinContext'
 
 const navLinkClass = ({ isActive }) =>
@@ -27,6 +27,10 @@ function Header() {
             <NavLink to="/planning" className={navLinkClass}>
               <CalendarDays size={15} />
               <span>Planning</span>
+            </NavLink>
+            <NavLink to="/courses" className={navLinkClass}>
+              <ShoppingCart size={15} />
+              <span>Courses</span>
             </NavLink>
             <NavLink to="/scanner" className={navLinkClass}>
               <ScanLine size={15} />

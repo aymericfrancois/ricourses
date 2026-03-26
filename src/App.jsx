@@ -6,6 +6,7 @@ import Home from './pages/Home'
 import Parametres from './pages/Parametres'
 import ListeCourses from './pages/ListeCourses'
 import Planning from './pages/Planning'
+import ShoppingList from './pages/ShoppingList'
 import Scanner from './pages/Scanner'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/planning" element={<Planning />} />
+            <Route path="/courses" element={<ShoppingList />} />
             <Route path="/liste" element={<ListeCourses />} />
             <Route path="/plats" element={<Parametres />} />
             <Route path="/rayons" element={<Parametres />} />
