@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { useMagasins } from '../hooks/useMagasins'
 import mappingRayons from '../data/mappingRayons.json'
+import { supabase } from '../supabaseClient'
 
 const STORAGE_KEY_ACTIF = 'ricourses_magasin_actif'
 const STORAGE_KEY_RAYONS = 'ricourses_rayons_par_magasin'
@@ -64,8 +65,6 @@ export function MagasinProvider({ children }) {
     } catch { return {} }
   })
 
-  // ocrAliases: { normalizedArticleName: ingredientName }
-  // Ex: { "daddy poudre sachet": "Sucre", "coeur laitue": "Salade" }
   const [ocrAliases, setOcrAliasesState] = useState(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_OCR_ALIASES)
@@ -73,38 +72,106 @@ export function MagasinProvider({ children }) {
     } catch { return {} }
   })
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif)
-  }, [magasinActif])
+  // ---- Persist localStorage ----
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif) }, [magasinActif])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_RAYONS, JSON.stringify(rayonsParMagasin)) }, [rayonsParMagasin])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_STANDALONE, JSON.stringify(standaloneIngredients)) }, [standaloneIngredients])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_SPLITS, JSON.stringify(splits)) }, [splits])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY_OCR_ALIASES, JSON.stringify(ocrAliases)) }, [ocrAliases])
 
+  // ---- Fetch Supabase : ingredient_rayons ----
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_RAYONS, JSON.stringify(rayonsParMagasin))
-  }, [rayonsParMagasin])
+    async function fetchRayons() {
+      const { data, error } = await supabase
+        .from('ingredient_rayons')
+        .select('ingredient_nom, rayon_nom, magasins!magasin_id(nom)')
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_STANDALONE, JSON.stringify(standaloneIngredients))
-  }, [standaloneIngredients])
+      if (error) { console.error('fetchRayons:', error); return }
+      if (data.length === 0) return
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SPLITS, JSON.stringify(splits))
-  }, [splits])
+      const mapped = {}
+      for (const row of data) {
+        const magasinNom = row.magasins?.nom
+        if (!magasinNom) continue
+        if (!mapped[magasinNom]) mapped[magasinNom] = {}
+        mapped[magasinNom][row.ingredient_nom] = row.rayon_nom
+      }
+      setRayonsParMagasin(mapped)
+    }
+    fetchRayons()
+  }, [])
 
+  // ---- Fetch Supabase : ingredient_splits ----
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_OCR_ALIASES, JSON.stringify(ocrAliases))
-  }, [ocrAliases])
+    async function fetchSplits() {
+      const { data, error } = await supabase
+        .from('ingredient_splits')
+        .select('ingredient_nom, split')
+
+      if (error) { console.error('fetchSplits:', error); return }
+      if (data.length === 0) return
+
+      setSplitsState(Object.fromEntries(data.map(r => [r.ingredient_nom, r.split])))
+    }
+    fetchSplits()
+  }, [])
+
+  // ---- Fetch Supabase : ocr_aliases ----
+  useEffect(() => {
+    async function fetchOcrAliases() {
+      const { data, error } = await supabase
+        .from('ocr_aliases')
+        .select('article_nom_normalise, ingredient_nom')
+
+      if (error) { console.error('fetchOcrAliases:', error); return }
+      if (data.length === 0) return
+
+      setOcrAliasesState(Object.fromEntries(data.map(r => [r.article_nom_normalise, r.ingredient_nom])))
+    }
+    fetchOcrAliases()
+  }, [])
+
+  // ---- Fetch Supabase : ingredients_standalone ----
+  useEffect(() => {
+    async function fetchStandalone() {
+      const { data, error } = await supabase
+        .from('ingredients_standalone')
+        .select('nom')
+
+      if (error) { console.error('fetchStandalone:', error); return }
+      if (data.length === 0) return
+
+      setStandaloneIngredients(data.map(r => r.nom))
+    }
+    fetchStandalone()
+  }, [])
+
+  // ---- Accesseurs OCR ----
+  function normaliserArticle(nomArticle) {
+    return nomArticle
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
 
   function getOcrAlias(nomArticle) {
     if (!nomArticle) return null
-    const key = nomArticle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-    return ocrAliases[key] ?? null
+    return ocrAliases[normaliserArticle(nomArticle)] ?? null
   }
 
   function setOcrAlias(nomArticle, nomIngredient) {
     if (!nomArticle || !nomIngredient) return
-    const key = nomArticle.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+    const key = normaliserArticle(nomArticle)
     setOcrAliasesState(prev => ({ ...prev, [key]: nomIngredient }))
+    supabase.from('ocr_aliases')
+      .upsert({ article_nom_normalise: key, ingredient_nom: nomIngredient }, { onConflict: 'article_nom_normalise' })
+      .then(({ error }) => { if (error) console.error('setOcrAlias:', error) })
   }
 
+  // ---- Splits Tricount ----
   function getSplit(nomIngredient) {
     if (!nomIngredient) return 'both'
     return splits[nomIngredient.toLowerCase()] ?? 'both'
@@ -112,13 +179,19 @@ export function MagasinProvider({ children }) {
 
   function setSplit(nomIngredient, valeur) {
     if (!nomIngredient) return
-    setSplitsState(prev => ({ ...prev, [nomIngredient.toLowerCase()]: valeur }))
+    const key = nomIngredient.toLowerCase()
+    setSplitsState(prev => ({ ...prev, [key]: valeur }))
+    supabase.from('ingredient_splits')
+      .upsert({ ingredient_nom: key, split: valeur }, { onConflict: 'ingredient_nom' })
+      .then(({ error }) => { if (error) console.error('setSplit:', error) })
   }
 
+  // ---- Magasin actif ----
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
   }
 
+  // ---- Rayons par ingrédient ----
   function getRayon(nomIngredient) {
     if (!nomIngredient || !magasinActif) return ''
     return rayonsParMagasin[magasinActif]?.[nomIngredient.toLowerCase()] ?? ''
@@ -129,11 +202,14 @@ export function MagasinProvider({ children }) {
     const key = nomIngredient.toLowerCase()
     setRayonsParMagasin(prev => ({
       ...prev,
-      [magasinActif]: {
-        ...prev[magasinActif],
-        [key]: rayonNom,
-      },
+      [magasinActif]: { ...prev[magasinActif], [key]: rayonNom },
     }))
+    const magasin = magasins.find(m => m.nom === magasinActif)
+    if (magasin) {
+      supabase.from('ingredient_rayons')
+        .upsert({ magasin_id: magasin.id, ingredient_nom: key, rayon_nom: rayonNom }, { onConflict: 'magasin_id,ingredient_nom' })
+        .then(({ error }) => { if (error) console.error('setRayon:', error) })
+    }
   }
 
   function renommerIngredientDansRayons(ancienNom, nouveauNom) {
@@ -152,6 +228,10 @@ export function MagasinProvider({ children }) {
       }
       return result
     })
+    supabase.from('ingredient_rayons')
+      .update({ ingredient_nom: nouveauKey })
+      .eq('ingredient_nom', ancienKey)
+      .then(({ error }) => { if (error) console.error('renommerIngredientDansRayons:', error) })
   }
 
   function supprimerIngredientDansRayons(nom) {
@@ -165,6 +245,10 @@ export function MagasinProvider({ children }) {
       return result
     })
     setStandaloneIngredients(prev => prev.filter(n => n.toLowerCase() !== key))
+    supabase.from('ingredient_rayons').delete().eq('ingredient_nom', key)
+      .then(({ error }) => { if (error) console.error('supprimerIngredientDansRayons rayons:', error) })
+    supabase.from('ingredients_standalone').delete().ilike('nom', nom)
+      .then(({ error }) => { if (error) console.error('supprimerIngredientDansRayons standalone:', error) })
   }
 
   function ajouterIngredientStandalone(nom, rayon) {
@@ -179,6 +263,17 @@ export function MagasinProvider({ children }) {
         ...prev,
         [magasinActif]: { ...prev[magasinActif], [key]: rayon },
       }))
+    }
+    supabase.from('ingredients_standalone')
+      .upsert({ nom: trimmed }, { onConflict: 'nom' })
+      .then(({ error }) => { if (error) console.error('ajouterIngredientStandalone:', error) })
+    if (rayon) {
+      const magasin = magasins.find(m => m.nom === magasinActif)
+      if (magasin) {
+        supabase.from('ingredient_rayons')
+          .upsert({ magasin_id: magasin.id, ingredient_nom: key, rayon_nom: rayon }, { onConflict: 'magasin_id,ingredient_nom' })
+          .then(({ error }) => { if (error) console.error('ajouterIngredientStandalone rayon:', error) })
+      }
     }
   }
 

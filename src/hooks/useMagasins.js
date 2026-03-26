@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import initialMagasins from '../data/initialMagasins.json'
+import { supabase } from '../supabaseClient'
 
 const STORAGE_KEY = 'ricourses_magasins'
 
@@ -23,8 +24,39 @@ export function useMagasins() {
     save(magasins)
   }, [magasins])
 
+  useEffect(() => {
+    async function fetchMagasins() {
+      const { data, error } = await supabase
+        .from('magasins')
+        .select('id, nom, rayons(id, nom, position)')
+        .order('nom')
+
+      if (error) { console.error('fetchMagasins:', error); return }
+      if (data.length === 0) return // Supabase vide → garder localStorage
+
+      const mapped = data.map(m => ({
+        id: m.id,
+        nom: m.nom,
+        rayons: (m.rayons ?? [])
+          .sort((a, b) => a.position - b.position)
+          .map(r => ({ id: r.id, nom: r.nom })),
+      }))
+      setMagasins(mapped)
+    }
+    fetchMagasins()
+  }, [])
+
   function moveRayonUp(magasinId, rayonIdx) {
     if (rayonIdx === 0) return
+    const magasin = magasins.find(m => m.id === magasinId)
+    if (magasin) {
+      const a = magasin.rayons[rayonIdx - 1]
+      const b = magasin.rayons[rayonIdx]
+      supabase.from('rayons').update({ position: rayonIdx }).eq('id', a.id)
+        .then(({ error }) => { if (error) console.error('moveRayonUp a:', error) })
+      supabase.from('rayons').update({ position: rayonIdx - 1 }).eq('id', b.id)
+        .then(({ error }) => { if (error) console.error('moveRayonUp b:', error) })
+    }
     setMagasins(prev =>
       prev.map(m => {
         if (m.id !== magasinId) return m
@@ -36,6 +68,15 @@ export function useMagasins() {
   }
 
   function moveRayonDown(magasinId, rayonIdx) {
+    const magasin = magasins.find(m => m.id === magasinId)
+    if (magasin && rayonIdx < magasin.rayons.length - 1) {
+      const a = magasin.rayons[rayonIdx]
+      const b = magasin.rayons[rayonIdx + 1]
+      supabase.from('rayons').update({ position: rayonIdx + 1 }).eq('id', a.id)
+        .then(({ error }) => { if (error) console.error('moveRayonDown a:', error) })
+      supabase.from('rayons').update({ position: rayonIdx }).eq('id', b.id)
+        .then(({ error }) => { if (error) console.error('moveRayonDown b:', error) })
+    }
     setMagasins(prev =>
       prev.map(m => {
         if (m.id !== magasinId) return m
@@ -52,34 +93,29 @@ export function useMagasins() {
     if (!trimmed) return
     setMagasins(prev =>
       prev.map(m =>
-        m.id !== magasinId
-          ? m
-          : {
-              ...m,
-              rayons: m.rayons.map(r =>
-                r.id !== rayonId ? r : { ...r, nom: trimmed }
-              ),
-            }
+        m.id !== magasinId ? m : {
+          ...m,
+          rayons: m.rayons.map(r => r.id !== rayonId ? r : { ...r, nom: trimmed }),
+        }
       )
     )
+    supabase.from('rayons').update({ nom: trimmed }).eq('id', rayonId)
+      .then(({ error }) => { if (error) console.error('renommerRayon:', error) })
   }
 
   function ajouterRayon(magasinId, nom) {
     const trimmed = nom.trim()
     if (!trimmed) return
+    const id = crypto.randomUUID()
+    const magasin = magasins.find(m => m.id === magasinId)
+    const position = magasin ? magasin.rayons.length : 0
     setMagasins(prev =>
       prev.map(m =>
-        m.id !== magasinId
-          ? m
-          : {
-              ...m,
-              rayons: [
-                ...m.rayons,
-                { id: crypto.randomUUID(), nom: trimmed },
-              ],
-            }
+        m.id !== magasinId ? m : { ...m, rayons: [...m.rayons, { id, nom: trimmed }] }
       )
     )
+    supabase.from('rayons').insert({ id, magasin_id: magasinId, nom: trimmed, position })
+      .then(({ error }) => { if (error) console.error('ajouterRayon:', error) })
   }
 
   function supprimerRayon(magasinId, rayonId) {
@@ -90,12 +126,16 @@ export function useMagasins() {
         return { ...m, rayons: m.rayons.filter(r => r.id !== rayonId) }
       })
     )
+    supabase.from('rayons').delete().eq('id', rayonId)
+      .then(({ error }) => { if (error) console.error('supprimerRayon:', error) })
   }
 
   function reorderRayons(magasinId, newRayons) {
-    setMagasins(prev =>
-      prev.map(m => m.id !== magasinId ? m : { ...m, rayons: newRayons })
-    )
+    setMagasins(prev => prev.map(m => m.id !== magasinId ? m : { ...m, rayons: newRayons }))
+    newRayons.forEach((r, i) => {
+      supabase.from('rayons').update({ position: i }).eq('id', r.id)
+        .then(({ error }) => { if (error) console.error('reorderRayons:', error) })
+    })
   }
 
   return { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons }
