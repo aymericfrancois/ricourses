@@ -20,6 +20,8 @@ function normaliser(str) {
 }
 
 // Mots-clés : une ligne contenant l'un d'eux est ignorée
+// ⚠️ Tous les mots-clés sont normalisés (sans accents, minuscules)
+// La comparaison utilise normaliser() sur chaque ligne — les accents ne posent plus de problème.
 const MOTS_CLES_IGNORER = [
   'total', 'cb', 'carte', 'visa', 'tva', 'merci', 'paye', 'especes',
   'rendu', 'dont', 'remise', 'reduction', 'mastercard', 'cheque',
@@ -28,7 +30,8 @@ const MOTS_CLES_IGNORER = [
   'nb article', 'subtotal',
   // Lignes bas de ticket Lidl / Carrefour / Leclerc
   'bancaire', 'restaurant', 'identification', 'sans valeur',
-  'economise', 'nombre de lignes', 'a payer', 'eligible',
+  'economise', 'economie', 'vous avez', 'promotion',
+  'nombre de lignes', 'a payer', 'eligible',
 ]
 
 /**
@@ -53,9 +56,9 @@ function parserTicket(texte) {
     // ── Lignes trop courtes
     if (trimmed.length < 3) continue
 
-    // ── Filtrage des mots-clés (total, carte, TVA…)
-    const lower = trimmed.toLowerCase()
-    if (MOTS_CLES_IGNORER.some(kw => lower.includes(kw))) continue
+    // ── Filtrage des mots-clés — comparaison normalisée (accents supprimés)
+    const normLigne = normaliser(trimmed)
+    if (MOTS_CLES_IGNORER.some(kw => normLigne.includes(kw))) continue
 
     // ── Détection de prix sur cette ligne
     const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,.]\d{2})/g)]
