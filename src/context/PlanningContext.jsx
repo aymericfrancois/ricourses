@@ -450,78 +450,116 @@ export function PlanningProvider({ children }) {
       .then(({ error }) => { if (error) console.error('removeExtra:', error) })
   }
 
+  async function syncPlanningToSupabase(newSemaine, newEspacesLibres) {
+    if (!planningIdRef.current) return
+    await supabase.from('espaces_libres').delete().eq('planning_id', planningIdRef.current)
+    for (const jourId of Object.values(jourIdsRef.current)) {
+      await supabase.from('repas_delta_excluded').delete().eq('jour_id', jourId)
+      await supabase.from('repas_delta_overrides').delete().eq('jour_id', jourId)
+      await supabase.from('repas_delta_extras').delete().eq('jour_id', jourId)
+    }
+    for (let idx = 0; idx < JOURS.length; idx++) {
+      const jourId = jourIdsRef.current[JOURS[idx]]
+      if (jourId) {
+        supabase.from('planning_jours')
+          .update({ midi_plat_id: newSemaine[idx].midi, soir_plat_id: newSemaine[idx].soir })
+          .eq('id', jourId)
+          .then(({ error }) => { if (error) console.error('syncPlanning jour:', error) })
+      }
+    }
+    const libresRows = []
+    for (const [bloc, items] of Object.entries(newEspacesLibres)) {
+      items.forEach((item, i) => libresRows.push({
+        id: item.id,
+        planning_id: planningIdRef.current,
+        bloc,
+        nom: item.nom,
+        quantite: item.quantite,
+        unite: item.unite,
+        plat_id: item.platId ?? null,
+        position: i,
+      }))
+    }
+    if (libresRows.length > 0) {
+      supabase.from('espaces_libres').insert(libresRows)
+        .then(({ error }) => { if (error) console.error('syncPlanning espaces:', error) })
+    }
+  }
+
+  async function saveCurrentWeekAsDefault() {
+    const template = {
+      semaine: state.semaine.map(j => ({ jour: j.jour, midi: j.midi ?? null, soir: j.soir ?? null })),
+      espacesLibres: {
+        petitDejeuner: state.espacesLibres.petitDejeuner.map(({ nom, quantite, unite, platId }) => ({ nom, quantite, unite, platId: platId ?? null })),
+        achatsPonctuels: state.espacesLibres.achatsPonctuels.map(({ nom, quantite, unite, platId }) => ({ nom, quantite, unite, platId: platId ?? null })),
+        alicya: state.espacesLibres.alicya.map(({ nom, quantite, unite, platId }) => ({ nom, quantite, unite, platId: platId ?? null })),
+      },
+    }
+    const { error } = await supabase
+      .from('parametres')
+      .upsert({ cle: 'semaine_type', valeur: template, updated_at: new Date().toISOString() }, { onConflict: 'cle' })
+    if (error) console.error('saveCurrentWeekAsDefault:', error)
+    return !error
+  }
+
   async function injectDefaultWeek(platsList, ajouterPlatFn, ajouterIngredientFn) {
-    // 1. Trouver ou créer chaque plat, construire le map nom → id
-    const platIdByNom = {}
-    for (const defaultPlat of DEFAULT_PLATS) {
-      const existing = platsList.find(p => p.nom.toLowerCase() === defaultPlat.nom.toLowerCase())
-      if (existing) {
-        platIdByNom[defaultPlat.nom] = existing.id
-      } else {
-        const newId = ajouterPlatFn(defaultPlat.nom, defaultPlat.categorie)
-        platIdByNom[defaultPlat.nom] = newId
-        for (const ing of defaultPlat.ingredients) {
-          ajouterIngredientFn(newId, ing)
-        }
-      }
-    }
+    let newSemaine, newEspacesLibres
 
-    // 2. Construire le nouvel état complet
-    const newSemaine = JOURS.map((jour, idx) => {
-      const { midi, soir } = DEFAULT_WEEK[idx]
-      return {
-        jour,
-        midi: midi ? (platIdByNom[midi] ?? null) : null,
+    // 1. Chercher le modèle personnalisé dans Supabase
+    const { data } = await supabase
+      .from('parametres')
+      .select('valeur')
+      .eq('cle', 'semaine_type')
+      .maybeSingle()
+
+    if (data) {
+      // Modèle personnalisé trouvé — les IDs sont déjà des UUIDs valides
+      const t = data.valeur
+      newSemaine = t.semaine.map(j => ({
+        jour: j.jour,
+        midi: j.midi ?? null,
         midiDelta: emptyDelta(),
-        soir: soir ? (platIdByNom[soir] ?? null) : null,
+        soir: j.soir ?? null,
         soirDelta: emptyDelta(),
+      }))
+      newEspacesLibres = {
+        petitDejeuner: (t.espacesLibres?.petitDejeuner ?? []).map(item => ({ ...item, id: crypto.randomUUID() })),
+        achatsPonctuels: (t.espacesLibres?.achatsPonctuels ?? []).map(item => ({ ...item, id: crypto.randomUUID() })),
+        alicya: (t.espacesLibres?.alicya ?? []).map(item => ({ ...item, id: crypto.randomUUID() })),
       }
-    })
-
-    const newEspacesLibres = {
-      petitDejeuner: DEFAULT_ESPACES.petitDejeuner.map(item => ({ ...item, id: crypto.randomUUID() })),
-      achatsPonctuels: [],
-      alicya: DEFAULT_ESPACES.alicya.map(item => ({ ...item, id: crypto.randomUUID() })),
-    }
-
-    // 3. Appliquer en une seule dispatch (pas de stale state)
-    dispatch({ type: 'HYDRATE', semaine: newSemaine, espacesLibres: newEspacesLibres })
-
-    // 4. Sync Supabase
-    if (planningIdRef.current) {
-      await supabase.from('espaces_libres').delete().eq('planning_id', planningIdRef.current)
-      for (const jourId of Object.values(jourIdsRef.current)) {
-        await supabase.from('repas_delta_excluded').delete().eq('jour_id', jourId)
-        await supabase.from('repas_delta_overrides').delete().eq('jour_id', jourId)
-        await supabase.from('repas_delta_extras').delete().eq('jour_id', jourId)
-      }
-      for (let idx = 0; idx < JOURS.length; idx++) {
-        const jourId = jourIdsRef.current[JOURS[idx]]
-        if (jourId) {
-          supabase.from('planning_jours')
-            .update({ midi_plat_id: newSemaine[idx].midi, soir_plat_id: newSemaine[idx].soir })
-            .eq('id', jourId)
-            .then(({ error }) => { if (error) console.error('injectDefaultWeek jour:', error) })
+    } else {
+      // Fallback sur le modèle codé en dur
+      const platIdByNom = {}
+      for (const defaultPlat of DEFAULT_PLATS) {
+        const existing = platsList.find(p => p.nom.toLowerCase() === defaultPlat.nom.toLowerCase())
+        if (existing) {
+          platIdByNom[defaultPlat.nom] = existing.id
+        } else {
+          const newId = ajouterPlatFn(defaultPlat.nom, defaultPlat.categorie)
+          platIdByNom[defaultPlat.nom] = newId
+          for (const ing of defaultPlat.ingredients) ajouterIngredientFn(newId, ing)
         }
       }
-      const libresRows = []
-      for (const [bloc, items] of Object.entries(newEspacesLibres)) {
-        items.forEach((item, i) => libresRows.push({
-          id: item.id,
-          planning_id: planningIdRef.current,
-          bloc,
-          nom: item.nom,
-          quantite: item.quantite,
-          unite: item.unite,
-          plat_id: null,
-          position: i,
-        }))
-      }
-      if (libresRows.length > 0) {
-        supabase.from('espaces_libres').insert(libresRows)
-          .then(({ error }) => { if (error) console.error('injectDefaultWeek espaces:', error) })
+      newSemaine = JOURS.map((jour, idx) => {
+        const { midi, soir } = DEFAULT_WEEK[idx]
+        return {
+          jour,
+          midi: midi ? (platIdByNom[midi] ?? null) : null,
+          midiDelta: emptyDelta(),
+          soir: soir ? (platIdByNom[soir] ?? null) : null,
+          soirDelta: emptyDelta(),
+        }
+      })
+      newEspacesLibres = {
+        petitDejeuner: DEFAULT_ESPACES.petitDejeuner.map(item => ({ ...item, id: crypto.randomUUID() })),
+        achatsPonctuels: [],
+        alicya: DEFAULT_ESPACES.alicya.map(item => ({ ...item, id: crypto.randomUUID() })),
       }
     }
+
+    // 2. Appliquer + sync
+    dispatch({ type: 'HYDRATE', semaine: newSemaine, espacesLibres: newEspacesLibres })
+    await syncPlanningToSupabase(newSemaine, newEspacesLibres)
   }
 
   function resetPlanning() {
@@ -545,7 +583,7 @@ export function PlanningProvider({ children }) {
       setMidi, setSoir,
       ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
       toggleExclu, setOverride, addExtra, removeExtra,
-      resetPlanning, injectDefaultWeek,
+      resetPlanning, injectDefaultWeek, saveCurrentWeekAsDefault,
     }}>
       {children}
     </PlanningContext.Provider>

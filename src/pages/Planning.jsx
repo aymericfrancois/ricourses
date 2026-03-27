@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Trash2, Plus, RotateCcw, X,
-  Check, ChevronDown, ChevronUp,
+  Check, ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { usePlanningContext } from '../context/PlanningContext'
@@ -230,11 +230,20 @@ function Planning() {
     setMidi, setSoir,
     ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
     toggleExclu, setOverride, addExtra, removeExtra,
-    resetPlanning, injectDefaultWeek,
+    resetPlanning, injectDefaultWeek, saveCurrentWeekAsDefault,
   } = usePlanningContext()
 
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmInject, setConfirmInject] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function handleSaveAsDefault() {
+    const ok = await saveCurrentWeekAsDefault()
+    if (ok) {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
   const [openSlots, setOpenSlots] = useState({})
 
   const [formsLibres, setFormsLibres] = useState({
@@ -424,6 +433,15 @@ function Planning() {
         </section>
 
         {/* Actions planning */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleSaveAsDefault}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${saved ? 'bg-green-100 text-green-700 border border-green-200' : 'border border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}
+          >
+            {saved ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+            {saved ? 'Modèle sauvegardé !' : 'Sauvegarder comme modèle'}
+          </button>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           {confirmInject ? (
             <>
