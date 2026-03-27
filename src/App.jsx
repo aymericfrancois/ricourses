@@ -11,7 +11,7 @@ import Scanner from './pages/Scanner'
 
 function App() {
   return (
-    <BrowserRouter basename="/ricourses">
+    <BrowserRouter>
       <MagasinProvider>
         <PlanningProvider>
           <Header />
