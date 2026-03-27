@@ -218,6 +218,16 @@ export function MagasinProvider({ children }) {
     const ancienKey = ancienNom.toLowerCase()
     const nouveauKey = nouveauNom.toLowerCase()
     if (ancienKey === nouveauKey) return
+
+    // Capturer les valeurs AVANT la mise à jour locale (pour le sync Supabase)
+    const migrations = []
+    for (const m of magasins) {
+      const rayonNom = rayonsParMagasin[m.nom]?.[ancienKey]
+      if (rayonNom !== undefined && UUID_REGEX.test(m.id)) {
+        migrations.push({ magasinId: m.id, rayonNom })
+      }
+    }
+
     setRayonsParMagasin(prev => {
       const result = {}
       for (const [magasin, mapping] of Object.entries(prev)) {
@@ -230,10 +240,18 @@ export function MagasinProvider({ children }) {
       }
       return result
     })
-    supabase.from('ingredient_rayons')
-      .update({ ingredient_nom: nouveauKey })
-      .eq('ingredient_nom', ancienKey)
-      .then(({ error }) => { if (error) console.error('renommerIngredientDansRayons:', error) })
+
+    // UPSERT du nouveau nom, puis DELETE de l'ancien — évite tout conflit UNIQUE
+    for (const { magasinId, rayonNom } of migrations) {
+      supabase.from('ingredient_rayons')
+        .upsert({ magasin_id: magasinId, ingredient_nom: nouveauKey, rayon_nom: rayonNom }, { onConflict: 'magasin_id,ingredient_nom' })
+        .then(({ error }) => {
+          if (error) { console.error('renommerIngredientDansRayons upsert:', error); return }
+          supabase.from('ingredient_rayons').delete()
+            .eq('magasin_id', magasinId).eq('ingredient_nom', ancienKey)
+            .then(({ error: e }) => { if (e) console.error('renommerIngredientDansRayons delete:', e) })
+        })
+    }
   }
 
   function supprimerIngredientDansRayons(nom) {
