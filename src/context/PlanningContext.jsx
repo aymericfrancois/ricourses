@@ -164,6 +164,54 @@ function reducer(state, action) {
   }
 }
 
+// ---- Semaine type ----
+const DEFAULT_PLATS = [
+  { nom: 'Salade Piémontaise',       categorie: 'Dej',      ingredients: [{ nom: 'Salade Piémontaise', quantite: 1, unite: '' }] },
+  { nom: 'Tofu Riz Haricots verts',  categorie: 'Dîner',    ingredients: [{ nom: 'Tofu', quantite: 1, unite: '' }, { nom: 'Riz', quantite: 70, unite: 'g' }, { nom: 'Haricots verts', quantite: 1, unite: '' }] },
+  { nom: 'Taboulé',                  categorie: 'Dej',      ingredients: [{ nom: 'Taboulé', quantite: 1, unite: '' }, { nom: 'Mayonnaise', quantite: 1, unite: '' }] },
+  { nom: 'Colin Blé Epinards',       categorie: 'Dîner',    ingredients: [{ nom: 'Colin pané', quantite: 1, unite: '' }, { nom: 'Blé', quantite: 70, unite: 'g' }, { nom: 'Epinards', quantite: 1, unite: '' }] },
+  { nom: 'Salade de pâtes',          categorie: 'Dej',      ingredients: [{ nom: 'Thon', quantite: 1, unite: '' }, { nom: 'Pâtes complètes', quantite: 200, unite: 'g' }, { nom: 'Tomates', quantite: 1, unite: '' }, { nom: 'Mozzarella', quantite: 1, unite: '' }, { nom: 'Maïs', quantite: 1, unite: '' }, { nom: 'Mayonnaise', quantite: 1, unite: '' }] },
+  { nom: 'Spaghetti Carbo',          categorie: 'PÂTES',    ingredients: [{ nom: 'Lardons', quantite: 200, unite: 'g' }, { nom: 'Spaghetti', quantite: 250, unite: 'g' }, { nom: 'Crème fraîche', quantite: 20, unite: 'cL' }, { nom: 'Parmesan', quantite: 1, unite: '' }] },
+  { nom: 'Salade croquante',         categorie: 'Dej',      ingredients: [{ nom: 'Quinoa', quantite: 1, unite: '' }, { nom: 'Betteraves', quantite: 1, unite: '' }, { nom: 'Carottes', quantite: 1, unite: '' }, { nom: 'Jambon de dinde', quantite: 2, unite: '' }, { nom: 'Yaourt 0%', quantite: 1, unite: '' }] },
+  { nom: 'Lentilles riz oeufs',      categorie: 'Dîner',    ingredients: [{ nom: 'Lentilles', quantite: 1, unite: '' }, { nom: 'Riz', quantite: 70, unite: 'g' }, { nom: 'Oeufs', quantite: 2, unite: '' }] },
+  { nom: 'Knackis gnocchis légumes', categorie: 'Dîner',    ingredients: [{ nom: 'Knackis', quantite: 6, unite: '' }, { nom: 'Gnocchis', quantite: 1, unite: '' }] },
+  { nom: 'Raviolis conserve',        categorie: 'Conserves',ingredients: [{ nom: 'Raviolis', quantite: 1, unite: '' }] },
+  { nom: 'Wraps VG',                 categorie: 'Dîner',    ingredients: [{ nom: 'Haricots rouges', quantite: 1, unite: '' }, { nom: 'Wraps', quantite: 3, unite: '' }, { nom: 'Tomates', quantite: 1, unite: '' }, { nom: 'Concombre', quantite: 0.5, unite: '' }, { nom: 'Poivron', quantite: 0.5, unite: '' }, { nom: 'Crème fraîche', quantite: 1, unite: '' }, { nom: 'Gruyère rapé', quantite: 1, unite: '' }] },
+  { nom: 'Poêlée',                   categorie: 'Dîner',    ingredients: [{ nom: 'Poêlée', quantite: 1, unite: '' }] },
+]
+
+const DEFAULT_WEEK = [
+  { midi: 'Salade Piémontaise',        soir: 'Tofu Riz Haricots verts' },
+  { midi: 'Taboulé',                   soir: 'Colin Blé Epinards' },
+  { midi: 'Salade de pâtes',           soir: 'Spaghetti Carbo' },
+  { midi: 'Salade croquante',          soir: 'Lentilles riz oeufs' },
+  { midi: 'Knackis gnocchis légumes',  soir: 'Raviolis conserve' },
+  { midi: 'Wraps VG',                  soir: null },
+  { midi: 'Wraps VG',                  soir: 'Poêlée' },
+]
+
+const DEFAULT_ESPACES = {
+  petitDejeuner: [
+    { nom: 'Oeufs',            quantite: 14,  unite: '' },
+    { nom: 'Multifruits',      quantite: 1,   unite: '' },
+    { nom: 'Céréales',         quantite: 1,   unite: '' },
+    { nom: 'Lait',             quantite: 2,   unite: '' },
+    { nom: 'Yaourt grec Acco', quantite: 1,   unite: '' },
+    { nom: 'Yaourt Grec',      quantite: 1,   unite: '' },
+  ],
+  alicya: [
+    { nom: 'Fromage 0%',        quantite: 2,   unite: '' },
+    { nom: 'Poulet',            quantite: 2,   unite: '' },
+    { nom: 'Courgettes',        quantite: 2.2, unite: 'kg' },
+    { nom: 'Riz thaï',          quantite: 1,   unite: '' },
+    { nom: "Flocons d'avoine",  quantite: 1,   unite: '' },
+    { nom: 'Bonbons',           quantite: 1,   unite: '' },
+    { nom: 'Cotons',            quantite: 1,   unite: '' },
+    { nom: 'Coton',             quantite: 1,   unite: '' },
+    { nom: 'Sirop',             quantite: 1,   unite: '' },
+  ],
+}
+
 const PlanningContext = createContext(null)
 
 export function PlanningProvider({ children }) {
@@ -402,6 +450,80 @@ export function PlanningProvider({ children }) {
       .then(({ error }) => { if (error) console.error('removeExtra:', error) })
   }
 
+  async function injectDefaultWeek(platsList, ajouterPlatFn, ajouterIngredientFn) {
+    // 1. Trouver ou créer chaque plat, construire le map nom → id
+    const platIdByNom = {}
+    for (const defaultPlat of DEFAULT_PLATS) {
+      const existing = platsList.find(p => p.nom.toLowerCase() === defaultPlat.nom.toLowerCase())
+      if (existing) {
+        platIdByNom[defaultPlat.nom] = existing.id
+      } else {
+        const newId = ajouterPlatFn(defaultPlat.nom, defaultPlat.categorie)
+        platIdByNom[defaultPlat.nom] = newId
+        for (const ing of defaultPlat.ingredients) {
+          ajouterIngredientFn(newId, ing)
+        }
+      }
+    }
+
+    // 2. Construire le nouvel état complet
+    const newSemaine = JOURS.map((jour, idx) => {
+      const { midi, soir } = DEFAULT_WEEK[idx]
+      return {
+        jour,
+        midi: midi ? (platIdByNom[midi] ?? null) : null,
+        midiDelta: emptyDelta(),
+        soir: soir ? (platIdByNom[soir] ?? null) : null,
+        soirDelta: emptyDelta(),
+      }
+    })
+
+    const newEspacesLibres = {
+      petitDejeuner: DEFAULT_ESPACES.petitDejeuner.map(item => ({ ...item, id: crypto.randomUUID() })),
+      achatsPonctuels: [],
+      alicya: DEFAULT_ESPACES.alicya.map(item => ({ ...item, id: crypto.randomUUID() })),
+    }
+
+    // 3. Appliquer en une seule dispatch (pas de stale state)
+    dispatch({ type: 'HYDRATE', semaine: newSemaine, espacesLibres: newEspacesLibres })
+
+    // 4. Sync Supabase
+    if (planningIdRef.current) {
+      await supabase.from('espaces_libres').delete().eq('planning_id', planningIdRef.current)
+      for (const jourId of Object.values(jourIdsRef.current)) {
+        await supabase.from('repas_delta_excluded').delete().eq('jour_id', jourId)
+        await supabase.from('repas_delta_overrides').delete().eq('jour_id', jourId)
+        await supabase.from('repas_delta_extras').delete().eq('jour_id', jourId)
+      }
+      for (let idx = 0; idx < JOURS.length; idx++) {
+        const jourId = jourIdsRef.current[JOURS[idx]]
+        if (jourId) {
+          supabase.from('planning_jours')
+            .update({ midi_plat_id: newSemaine[idx].midi, soir_plat_id: newSemaine[idx].soir })
+            .eq('id', jourId)
+            .then(({ error }) => { if (error) console.error('injectDefaultWeek jour:', error) })
+        }
+      }
+      const libresRows = []
+      for (const [bloc, items] of Object.entries(newEspacesLibres)) {
+        items.forEach((item, i) => libresRows.push({
+          id: item.id,
+          planning_id: planningIdRef.current,
+          bloc,
+          nom: item.nom,
+          quantite: item.quantite,
+          unite: item.unite,
+          plat_id: null,
+          position: i,
+        }))
+      }
+      if (libresRows.length > 0) {
+        supabase.from('espaces_libres').insert(libresRows)
+          .then(({ error }) => { if (error) console.error('injectDefaultWeek espaces:', error) })
+      }
+    }
+  }
+
   function resetPlanning() {
     dispatch({ type: 'RESET' })
     if (planningIdRef.current) {
@@ -423,7 +545,7 @@ export function PlanningProvider({ children }) {
       setMidi, setSoir,
       ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
       toggleExclu, setOverride, addExtra, removeExtra,
-      resetPlanning,
+      resetPlanning, injectDefaultWeek,
     }}>
       {children}
     </PlanningContext.Provider>

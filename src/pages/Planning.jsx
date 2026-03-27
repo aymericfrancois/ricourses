@@ -224,16 +224,17 @@ function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, on
 
 // ---- Page Planning ----
 function Planning() {
-  const { plats, ajouterPlat } = usePlats()
+  const { plats, ajouterPlat, ajouterIngredient } = usePlats()
   const {
     semaine, espacesLibres,
     setMidi, setSoir,
     ajouterIngredientLibre, supprimerIngredientLibre, updateIngredientLibre,
     toggleExclu, setOverride, addExtra, removeExtra,
-    resetPlanning,
+    resetPlanning, injectDefaultWeek,
   } = usePlanningContext()
 
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmInject, setConfirmInject] = useState(false)
   const [openSlots, setOpenSlots] = useState({})
 
   const [formsLibres, setFormsLibres] = useState({
@@ -422,18 +423,40 @@ function Planning() {
           </div>
         </section>
 
-        {/* Reset */}
-        <div className="flex items-center gap-3">
-          {confirmReset ? (
+        {/* Actions planning */}
+        <div className="flex flex-wrap items-center gap-3">
+          {confirmInject ? (
             <>
-              <span className="text-sm text-gray-600">Réinitialiser le planning ?</span>
-              <button onClick={handleReset} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">Confirmer</button>
-              <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-100 transition-colors">Annuler</button>
+              <span className="text-sm text-gray-600">Attention, cela va écraser la semaine en cours.</span>
+              <button
+                onClick={() => { injectDefaultWeek(plats, ajouterPlat, ajouterIngredient); setConfirmInject(false); setOpenSlots({}) }}
+                className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+              >
+                Confirmer
+              </button>
+              <button onClick={() => setConfirmInject(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-100 transition-colors">Annuler</button>
             </>
           ) : (
-            <button onClick={handleReset} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 hover:text-gray-700 transition-colors">
-              <RotateCcw size={14} />Réinitialiser le planning
+            <button
+              onClick={() => { setConfirmReset(false); setConfirmInject(true) }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+            >
+              <RotateCcw size={14} />Semaine type
             </button>
+          )}
+
+          {!confirmInject && (
+            confirmReset ? (
+              <>
+                <span className="text-sm text-gray-600">Tout effacer ?</span>
+                <button onClick={handleReset} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">Confirmer</button>
+                <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-100 transition-colors">Annuler</button>
+              </>
+            ) : (
+              <button onClick={handleReset} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-100 hover:text-gray-700 transition-colors">
+                <RotateCcw size={14} />Réinitialiser le planning
+              </button>
+            )
           )}
         </div>
 
