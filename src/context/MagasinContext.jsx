@@ -44,6 +44,8 @@ function loadMagasinActif(magasins) {
   return magasins[0]?.nom ?? ''
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const MagasinContext = createContext(null)
 
 export function MagasinProvider({ children }) {
@@ -205,7 +207,7 @@ export function MagasinProvider({ children }) {
       [magasinActif]: { ...prev[magasinActif], [key]: rayonNom },
     }))
     const magasin = magasins.find(m => m.nom === magasinActif)
-    if (magasin) {
+    if (magasin && UUID_REGEX.test(magasin.id)) {
       supabase.from('ingredient_rayons')
         .upsert({ magasin_id: magasin.id, ingredient_nom: key, rayon_nom: rayonNom }, { onConflict: 'magasin_id,ingredient_nom' })
         .then(({ error }) => { if (error) console.error('setRayon:', error) })
@@ -269,7 +271,7 @@ export function MagasinProvider({ children }) {
       .then(({ error }) => { if (error) console.error('ajouterIngredientStandalone:', error) })
     if (rayon) {
       const magasin = magasins.find(m => m.nom === magasinActif)
-      if (magasin) {
+      if (magasin && UUID_REGEX.test(magasin.id)) {
         supabase.from('ingredient_rayons')
           .upsert({ magasin_id: magasin.id, ingredient_nom: key, rayon_nom: rayon }, { onConflict: 'magasin_id,ingredient_nom' })
           .then(({ error }) => { if (error) console.error('ajouterIngredientStandalone rayon:', error) })
