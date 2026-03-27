@@ -115,7 +115,7 @@ export function useMagasins() {
         m.id !== magasinId ? m : { ...m, rayons: [...m.rayons, { id, nom: trimmed }] }
       )
     )
-    supabase.from('rayons').insert({ id, magasin_id: magasinId, nom: trimmed, position })
+    if (UUID_REGEX.test(magasinId)) supabase.from('rayons').insert({ id, magasin_id: magasinId, nom: trimmed, position })
       .then(({ error }) => { if (error) console.error('ajouterRayon:', error) })
   }
 
