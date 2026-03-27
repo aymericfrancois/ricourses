@@ -3,6 +3,7 @@ import initialMagasins from '../data/initialMagasins.json'
 import { supabase } from '../supabaseClient'
 
 const STORAGE_KEY = 'ricourses_magasins'
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function load() {
   try {
@@ -52,9 +53,9 @@ export function useMagasins() {
     if (magasin) {
       const a = magasin.rayons[rayonIdx - 1]
       const b = magasin.rayons[rayonIdx]
-      supabase.from('rayons').update({ position: rayonIdx }).eq('id', a.id)
+      if (UUID_REGEX.test(a.id)) supabase.from('rayons').update({ position: rayonIdx }).eq('id', a.id)
         .then(({ error }) => { if (error) console.error('moveRayonUp a:', error) })
-      supabase.from('rayons').update({ position: rayonIdx - 1 }).eq('id', b.id)
+      if (UUID_REGEX.test(b.id)) supabase.from('rayons').update({ position: rayonIdx - 1 }).eq('id', b.id)
         .then(({ error }) => { if (error) console.error('moveRayonUp b:', error) })
     }
     setMagasins(prev =>
@@ -72,9 +73,9 @@ export function useMagasins() {
     if (magasin && rayonIdx < magasin.rayons.length - 1) {
       const a = magasin.rayons[rayonIdx]
       const b = magasin.rayons[rayonIdx + 1]
-      supabase.from('rayons').update({ position: rayonIdx + 1 }).eq('id', a.id)
+      if (UUID_REGEX.test(a.id)) supabase.from('rayons').update({ position: rayonIdx + 1 }).eq('id', a.id)
         .then(({ error }) => { if (error) console.error('moveRayonDown a:', error) })
-      supabase.from('rayons').update({ position: rayonIdx }).eq('id', b.id)
+      if (UUID_REGEX.test(b.id)) supabase.from('rayons').update({ position: rayonIdx }).eq('id', b.id)
         .then(({ error }) => { if (error) console.error('moveRayonDown b:', error) })
     }
     setMagasins(prev =>
@@ -99,7 +100,7 @@ export function useMagasins() {
         }
       )
     )
-    supabase.from('rayons').update({ nom: trimmed }).eq('id', rayonId)
+    if (UUID_REGEX.test(rayonId)) supabase.from('rayons').update({ nom: trimmed }).eq('id', rayonId)
       .then(({ error }) => { if (error) console.error('renommerRayon:', error) })
   }
 
@@ -126,14 +127,14 @@ export function useMagasins() {
         return { ...m, rayons: m.rayons.filter(r => r.id !== rayonId) }
       })
     )
-    supabase.from('rayons').delete().eq('id', rayonId)
+    if (UUID_REGEX.test(rayonId)) supabase.from('rayons').delete().eq('id', rayonId)
       .then(({ error }) => { if (error) console.error('supprimerRayon:', error) })
   }
 
   function reorderRayons(magasinId, newRayons) {
     setMagasins(prev => prev.map(m => m.id !== magasinId ? m : { ...m, rayons: newRayons }))
     newRayons.forEach((r, i) => {
-      supabase.from('rayons').update({ position: i }).eq('id', r.id)
+      if (UUID_REGEX.test(r.id)) supabase.from('rayons').update({ position: i }).eq('id', r.id)
         .then(({ error }) => { if (error) console.error('reorderRayons:', error) })
     })
   }
