@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check,
+  ShoppingCart, Package, GripVertical, Check, RotateCcw,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
@@ -10,6 +10,57 @@ import { CSS } from '@dnd-kit/utilities'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
+import { supabase } from '../supabaseClient'
+
+// ---- Hook état coché (Supabase + Realtime) ----
+function useCoursesCoches() {
+  const [checkedItems, setCheckedItems] = useState(() => new Set())
+
+  useEffect(() => {
+    supabase.from('courses_cochees').select('ingredient_nom')
+      .then(({ data, error }) => {
+        if (error) { console.error('fetchCoursesCoches:', error); return }
+        setCheckedItems(new Set(data.map(r => r.ingredient_nom)))
+      })
+
+    const channel = supabase
+      .channel('courses_cochees_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses_cochees' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          setCheckedItems(prev => new Set([...prev, payload.new.ingredient_nom]))
+        } else if (payload.eventType === 'DELETE') {
+          setCheckedItems(prev => { const s = new Set(prev); s.delete(payload.old.ingredient_nom); return s })
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  const toggleChecked = useCallback((key) => {
+    setCheckedItems(prev => {
+      const s = new Set(prev)
+      if (s.has(key)) {
+        s.delete(key)
+        supabase.from('courses_cochees').delete().eq('ingredient_nom', key)
+          .then(({ error }) => { if (error) console.error('uncheck:', error) })
+      } else {
+        s.add(key)
+        supabase.from('courses_cochees').insert({ ingredient_nom: key })
+          .then(({ error }) => { if (error) console.error('check:', error) })
+      }
+      return s
+    })
+  }, [])
+
+  const uncheckAll = useCallback(() => {
+    setCheckedItems(new Set())
+    supabase.from('courses_cochees').delete().neq('ingredient_nom', '')
+      .then(({ error }) => { if (error) console.error('uncheckAll:', error) })
+  }, [])
+
+  return { checkedItems, toggleChecked, uncheckAll }
+}
 
 const BLOCS_LIBRES = [
   { key: 'petitDejeuner' },
@@ -99,21 +150,13 @@ function ShoppingList() {
   const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
   const { semaine, espacesLibres } = usePlanningContext()
 
-  const [checkedItems, setCheckedItems] = useState(() => new Set())
+  const { checkedItems, toggleChecked, uncheckAll } = useCoursesCoches()
   const [activeItem, setActiveItem] = useState(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
-
-  function toggleChecked(key) {
-    setCheckedItems(prev => {
-      const s = new Set(prev)
-      s.has(key) ? s.delete(key) : s.add(key)
-      return s
-    })
-  }
 
   function handleDragStart({ active }) {
     setActiveItem(active.data.current)
@@ -202,6 +245,15 @@ function ShoppingList() {
             Liste de courses
             {totalIngredients > 0 && <span className="ml-2 text-gray-300 font-normal normal-case">({totalIngredients} ingr.)</span>}
           </h2>
+          {checkedItems.size > 0 && (
+            <button
+              onClick={uncheckAll}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-400 transition-colors"
+            >
+              <RotateCcw size={12} />
+              Tout décocher
+            </button>
+          )}
         </div>
         {totalIngredients > 0 && (
           <p className="text-[10px] text-gray-400 mb-4">Glissez un ingrédient vers un rayon pour le reclasser.</p>
