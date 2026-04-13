@@ -185,14 +185,6 @@ function ShoppingList() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
-  function toggleChecked(key) {
-    setCheckedItems(prev => {
-      const s = new Set(prev)
-      s.has(key) ? s.delete(key) : s.add(key)
-      return s
-    })
-  }
-
   function handleDragStart({ active }) {
     setActiveItem(active.data.current)
   }
