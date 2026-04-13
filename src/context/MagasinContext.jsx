@@ -49,7 +49,44 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const MagasinContext = createContext(null)
 
 export function MagasinProvider({ children }) {
-  const { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
+  const { magasins, moveRayonUp, moveRayonDown, renommerRayon: renommerRayonBase, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
+
+  // Wrapper qui cascade le rename vers ingredient_rayons (rayon_nom est stocké en TEXT, pas en FK)
+  function renommerRayon(magasinId, rayonId, nouveauNom) {
+    const trimmed = nouveauNom.trim()
+    if (!trimmed) return
+    const magasin = magasins.find(m => m.id === magasinId)
+    const ancienNom = magasin?.rayons.find(r => r.id === rayonId)?.nom
+    if (!ancienNom || ancienNom === trimmed) {
+      renommerRayonBase(magasinId, rayonId, trimmed)
+      return
+    }
+
+    // 1. Renomme dans la table rayons + state local des magasins
+    renommerRayonBase(magasinId, rayonId, trimmed)
+
+    // 2. Met à jour les mappings locaux : tout ingrédient pointant vers ancienNom passe à trimmed
+    if (magasin) {
+      setRayonsParMagasin(prev => {
+        const mapping = prev[magasin.nom]
+        if (!mapping) return prev
+        const next = {}
+        for (const [ingNom, rayonNom] of Object.entries(mapping)) {
+          next[ingNom] = rayonNom === ancienNom ? trimmed : rayonNom
+        }
+        return { ...prev, [magasin.nom]: next }
+      })
+    }
+
+    // 3. Cascade Supabase : ingredient_rayons.rayon_nom = trimmed pour ce magasin
+    if (UUID_REGEX.test(magasinId)) {
+      supabase.from('ingredient_rayons')
+        .update({ rayon_nom: trimmed })
+        .eq('magasin_id', magasinId)
+        .eq('rayon_nom', ancienNom)
+        .then(({ error }) => { if (error) console.error('renommerRayon cascade:', error) })
+    }
+  }
 
   const [magasinActif, setMagasinActifState] = useState(() => loadMagasinActif(magasins))
   const [rayonsParMagasin, setRayonsParMagasin] = useState(() => loadRayons(magasins))
