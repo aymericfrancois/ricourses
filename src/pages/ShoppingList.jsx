@@ -345,7 +345,7 @@ function ShoppingList() {
           <p className="text-[10px] text-gray-400 mb-4">Glissez un ingrédient vers un rayon pour le reclasser.</p>
         )}
 
-        {rayonsOrdonnes.length === 0 || totalIngredients === 0 ? (
+        {totalIngredients === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-300 bg-white rounded-xl shadow-sm border border-gray-100">
             <ShoppingCart size={40} className="mb-3" />
             <p className="text-sm text-center leading-relaxed">Sélectionnez des plats<br />ou ajoutez des ingrédients libres.</p>
@@ -353,6 +353,17 @@ function ShoppingList() {
         ) : (
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="space-y-4">
+              {orphelins.length > 0 && (
+                <DroppableRayon
+                  rayonId=""
+                  label="📦 Non classés"
+                  items={orphelins}
+                  checkedItems={checkedItems}
+                  onToggleChecked={toggleChecked}
+                  isOrphan
+                />
+              )}
+
               {rayonsOrdonnes.map(rayonNom => (
                 <DroppableRayon
                   key={rayonNom}
@@ -365,19 +376,9 @@ function ShoppingList() {
               ))}
 
               {orphelins.length > 0 && (
-                <>
-                  <DroppableRayon
-                    rayonId=""
-                    label="Autres / Non classés"
-                    items={orphelins}
-                    checkedItems={checkedItems}
-                    onToggleChecked={toggleChecked}
-                    isOrphan
-                  />
-                  <p className="text-xs text-gray-400 text-center">
-                    Assignez un rayon dans Paramètres → Catalogue, ou glissez l&apos;ingrédient sur un rayon.
-                  </p>
-                </>
+                <p className="text-xs text-gray-400 text-center">
+                  Glissez un ingrédient « non classé » vers un rayon pour l&apos;assigner à <span className="font-medium">{magasinActif}</span>.
+                </p>
               )}
             </div>
 
