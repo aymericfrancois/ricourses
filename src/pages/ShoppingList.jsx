@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check, Share2,
+  ShoppingCart, Package, GripVertical, Check,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
@@ -10,6 +10,57 @@ import { CSS } from '@dnd-kit/utilities'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
+import { supabase } from '../supabaseClient'
+
+// ---- Hook état coché (Supabase + Realtime) ----
+function useCoursesCoches() {
+  const [checkedItems, setCheckedItems] = useState(() => new Set())
+
+  useEffect(() => {
+    supabase.from('courses_cochees').select('ingredient_nom')
+      .then(({ data, error }) => {
+        if (error) { console.error('fetchCoursesCoches:', error); return }
+        setCheckedItems(new Set(data.map(r => r.ingredient_nom)))
+      })
+
+    const channel = supabase
+      .channel('courses_cochees_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courses_cochees' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          setCheckedItems(prev => new Set([...prev, payload.new.ingredient_nom]))
+        } else if (payload.eventType === 'DELETE') {
+          setCheckedItems(prev => { const s = new Set(prev); s.delete(payload.old.ingredient_nom); return s })
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  const toggleChecked = useCallback((key) => {
+    setCheckedItems(prev => {
+      const s = new Set(prev)
+      if (s.has(key)) {
+        s.delete(key)
+        supabase.from('courses_cochees').delete().eq('ingredient_nom', key)
+          .then(({ error }) => { if (error) console.error('uncheck:', error) })
+      } else {
+        s.add(key)
+        supabase.from('courses_cochees').insert({ ingredient_nom: key })
+          .then(({ error }) => { if (error) console.error('check:', error) })
+      }
+      return s
+    })
+  }, [])
+
+  const uncheckAll = useCallback(() => {
+    setCheckedItems(new Set())
+    supabase.from('courses_cochees').delete().neq('ingredient_nom', '')
+      .then(({ error }) => { if (error) console.error('uncheckAll:', error) })
+  }, [])
+
+  return { checkedItems, toggleChecked, uncheckAll }
+}
 
 const BLOCS_LIBRES = [
   { key: 'petitDejeuner' },
@@ -125,7 +176,7 @@ function ShoppingList() {
   const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
   const { semaine, espacesLibres } = usePlanningContext()
 
-  const [checkedItems, setCheckedItems] = useState(() => new Set())
+  const { checkedItems, toggleChecked, uncheckAll } = useCoursesCoches()
   const [activeItem, setActiveItem] = useState(null)
   const [toast, setToast] = useState('')
 
@@ -140,60 +191,6 @@ function ShoppingList() {
       s.has(key) ? s.delete(key) : s.add(key)
       return s
     })
-  }
-
-  function buildListeText() {
-    const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    const lines = [`🛒 Liste de courses - ${date}`, '']
-
-    for (const rayonNom of rayonsOrdonnes) {
-      const items = (grouped[rayonNom] ?? []).filter(item => !checkedItems.has(item.nom.toLowerCase()))
-      if (items.length === 0) continue
-      lines.push(`${emojiPourRayon(rayonNom)} ${rayonNom.toUpperCase()}`)
-      const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
-      for (const item of sorted) {
-        lines.push(`- [ ] ${item.nom}${formatQuantite(item)}`)
-      }
-      lines.push('')
-    }
-
-    const orphelinsRestants = orphelins.filter(item => !checkedItems.has(item.nom.toLowerCase()))
-    if (orphelinsRestants.length > 0) {
-      lines.push('📦 AUTRES')
-      const sorted = [...orphelinsRestants].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
-      for (const item of sorted) {
-        lines.push(`- [ ] ${item.nom}${formatQuantite(item)}`)
-      }
-    }
-
-    return lines.join('\n').trimEnd()
-  }
-
-  async function handleShare() {
-    const text = buildListeText()
-    if (text.split('\n').length <= 2) {
-      setToast('Rien à partager')
-      setTimeout(() => setToast(''), 2000)
-      return
-    }
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'Liste de courses', text })
-      } catch (e) {
-        if (e.name !== 'AbortError') console.error('share:', e)
-      }
-    } else if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text)
-        setToast('Liste copiée !')
-        setTimeout(() => setToast(''), 2000)
-      } catch (e) {
-        console.error('clipboard:', e)
-        setToast('Erreur de copie')
-        setTimeout(() => setToast(''), 2000)
-      }
-    }
   }
 
   function handleDragStart({ active }) {
@@ -283,15 +280,6 @@ function ShoppingList() {
             Liste de courses
             {totalIngredients > 0 && <span className="ml-2 text-gray-300 font-normal normal-case">({totalIngredients} ingr.)</span>}
           </h2>
-          {totalIngredients > 0 && (
-            <button
-              onClick={handleShare}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 active:scale-95 transition-all"
-            >
-              <Share2 size={13} />
-              Partager la liste
-            </button>
-          )}
         </div>
         {toast && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-gray-900 text-white text-sm shadow-lg animate-in fade-in">
