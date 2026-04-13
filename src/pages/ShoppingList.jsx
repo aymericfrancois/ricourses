@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check,
+  ShoppingCart, Package, GripVertical, Check, Share2,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
@@ -16,6 +16,32 @@ const BLOCS_LIBRES = [
   { key: 'achatsPonctuels' },
   { key: 'alicya' },
 ]
+
+// ---- Emoji par rayon (basé sur le nom) ----
+function emojiPourRayon(nom) {
+  const n = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  if (n.includes('fruit') || n.includes('legume')) return '🥦'
+  if (n.includes('boulang') || n.includes('pain')) return '🥖'
+  if (n.includes('viande') || n.includes('boucher') || n.includes('charcut')) return '🥩'
+  if (n.includes('poisson') || n.includes('mer')) return '🐟'
+  if (n.includes('frais') || n.includes('laitier') || n.includes('fromage') || n.includes('yaourt')) return '🧀'
+  if (n.includes('surgel')) return '❄️'
+  if (n.includes('boisson') || n.includes('alcool')) return '🥤'
+  if (n.includes('conserv')) return '🥫'
+  if (n.includes('pat') || n.includes('riz') || n.includes('feculent')) return '🍝'
+  if (n.includes('petit') || n.includes('dej') || n.includes('cerea')) return '🥣'
+  if (n.includes('aperitif') || n.includes('biscuit') || n.includes('sucr') || n.includes('confiserie')) return '🍪'
+  if (n.includes('hygiene') || n.includes('entretien') || n.includes('menag')) return '🧴'
+  if (n.includes('epic') || n.includes('condim') || n.includes('sauce')) return '🧂'
+  return '📦'
+}
+
+function formatQuantite(item) {
+  if (item.quantite > 0) {
+    return ` (${item.quantite}${item.unite ? ' ' + item.unite : ''})`
+  }
+  return item.unite ? ` (${item.unite})` : ''
+}
 
 // ---- Ingrédient draggable ----
 function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
@@ -101,6 +127,7 @@ function ShoppingList() {
 
   const [checkedItems, setCheckedItems] = useState(() => new Set())
   const [activeItem, setActiveItem] = useState(null)
+  const [toast, setToast] = useState('')
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -113,6 +140,60 @@ function ShoppingList() {
       s.has(key) ? s.delete(key) : s.add(key)
       return s
     })
+  }
+
+  function buildListeText() {
+    const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const lines = [`🛒 Liste de courses - ${date}`, '']
+
+    for (const rayonNom of rayonsOrdonnes) {
+      const items = (grouped[rayonNom] ?? []).filter(item => !checkedItems.has(item.nom.toLowerCase()))
+      if (items.length === 0) continue
+      lines.push(`${emojiPourRayon(rayonNom)} ${rayonNom.toUpperCase()}`)
+      const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+      for (const item of sorted) {
+        lines.push(`- [ ] ${item.nom}${formatQuantite(item)}`)
+      }
+      lines.push('')
+    }
+
+    const orphelinsRestants = orphelins.filter(item => !checkedItems.has(item.nom.toLowerCase()))
+    if (orphelinsRestants.length > 0) {
+      lines.push('📦 AUTRES')
+      const sorted = [...orphelinsRestants].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+      for (const item of sorted) {
+        lines.push(`- [ ] ${item.nom}${formatQuantite(item)}`)
+      }
+    }
+
+    return lines.join('\n').trimEnd()
+  }
+
+  async function handleShare() {
+    const text = buildListeText()
+    if (text.split('\n').length <= 2) {
+      setToast('Rien à partager')
+      setTimeout(() => setToast(''), 2000)
+      return
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Liste de courses', text })
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('share:', e)
+      }
+    } else if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text)
+        setToast('Liste copiée !')
+        setTimeout(() => setToast(''), 2000)
+      } catch (e) {
+        console.error('clipboard:', e)
+        setToast('Erreur de copie')
+        setTimeout(() => setToast(''), 2000)
+      }
+    }
   }
 
   function handleDragStart({ active }) {
@@ -202,7 +283,21 @@ function ShoppingList() {
             Liste de courses
             {totalIngredients > 0 && <span className="ml-2 text-gray-300 font-normal normal-case">({totalIngredients} ingr.)</span>}
           </h2>
+          {totalIngredients > 0 && (
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700 active:scale-95 transition-all"
+            >
+              <Share2 size={13} />
+              Partager la liste
+            </button>
+          )}
         </div>
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-gray-900 text-white text-sm shadow-lg animate-in fade-in">
+            {toast}
+          </div>
+        )}
         {totalIngredients > 0 && (
           <p className="text-[10px] text-gray-400 mb-4">Glissez un ingrédient vers un rayon pour le reclasser.</p>
         )}
