@@ -1,10 +1,106 @@
 @import "tailwindcss";
 
-body {
-  margin: 0;
-  min-width: 320px;
+:root {
+  --accent: oklch(0.58 0.18 270);
+  --accent-soft: oklch(0.93 0.05 270);
+  --accent-ink: oklch(0.42 0.18 270);
+  --ink: #13151c; --ink-2: #3b3d48; --ink-3: #7a7d8a; --ink-4: #c1c4cf;
+  --radius: 16px; --radius-sm: 12px; --radius-xs: 8px;
+  --glass-bg: rgba(255,255,255,0.52);
+  --glass-bg-strong: rgba(255,255,255,0.7);
+  --glass-border: rgba(255,255,255,0.65);
+  --glass-shadow: 0 10px 36px -14px rgba(30,30,80,0.22), 0 2px 8px -4px rgba(30,30,80,0.08);
 }
 
-#root {
-  width: 100%;
+html, body { height: 100%; }
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background:
+    radial-gradient(1000px 700px at 90% -5%, oklch(0.88 0.1 270 / 0.75), transparent 60%),
+    radial-gradient(900px 600px at -10% 30%, oklch(0.9 0.08 210 / 0.8), transparent 60%),
+    radial-gradient(700px 600px at 40% 110%, oklch(0.9 0.08 180 / 0.55), transparent 60%),
+    linear-gradient(180deg, #f3f6ff 0%, #eef4fb 40%, #f4f0fb 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+/* ===== GLASS ===== */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius);
+}
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: var(--radius);
+}
+.glass-sm {
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px) saturate(170%);
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+.sheen { position: relative; }
+.sheen::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0) 40%);
+  pointer-events: none;
+}
+
+/* ===== TOKENS ===== */
+.accent-bg { background: var(--accent); color: #fff; }
+.accent-soft-bg { background: var(--accent-soft); }
+.accent-text { color: var(--accent-ink); }
+.ink { color: var(--ink); }
+.ink-2 { color: var(--ink-2); }
+.ink-3 { color: var(--ink-3); }
+.ink-4 { color: var(--ink-4); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  background: rgba(255,255,255,0.5); color: var(--ink-2);
+  border: 1px solid rgba(20,20,30,0.05);
+}
+
+.nav-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 14px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+  transition: all 0.18s; white-space: nowrap;
+}
+.nav-link:hover { background: rgba(255,255,255,0.5); color: var(--ink); }
+.nav-link.active {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 6px 18px -8px color-mix(in oklch, var(--accent) 55%, transparent);
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes popIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes blobFloat {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33% { transform: translate(20px,-15px) scale(1.05); }
+  66% { transform: translate(-15px,10px) scale(0.97); }
+}
+.anim-in { animation: fadeSlideUp 0.45s cubic-bezier(0.2,0.8,0.2,1) both; }
+.anim-pop { animation: popIn 0.35s cubic-bezier(0.2,0.8,0.2,1) both; }
+
+.blob {
+  position: absolute; border-radius: 50%;
+  filter: blur(60px); pointer-events: none;
+  animation: blobFloat 18s ease-in-out infinite;
 }

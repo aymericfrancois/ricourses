@@ -17,6 +17,17 @@ import { usePlanningContext } from '../context/PlanningContext'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
 
+const inputBase =
+  'rounded-xl border border-white/70 bg-white/60 px-3 py-2 text-sm ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40'
+const inputSm =
+  'rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40'
+const inputXs =
+  'rounded-md border border-white/70 bg-white/70 px-1.5 py-0.5 text-xs ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40'
+const btnPrimary =
+  'flex items-center gap-1.5 rounded-xl accent-bg px-4 py-2 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all'
+const btnPrimarySm =
+  'flex items-center gap-1 rounded-lg accent-bg px-3 py-1.5 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all'
+
 // ---- Fast scroll mobile (barre latérale) ----
 const THUMB_H = 44
 function FastScroll() {
@@ -51,10 +62,10 @@ function FastScroll() {
   return (
     <div
       ref={trackRef}
-      className="fixed right-1.5 top-[18%] bottom-[18%] z-40 md:hidden w-1.5 bg-gray-300/40 rounded-full"
+      className="fixed right-1.5 top-[18%] bottom-[18%] z-40 md:hidden w-1.5 bg-white/50 rounded-full"
     >
       <div
-        className="absolute w-full rounded-full bg-green-500/60 touch-none"
+        className="absolute w-full rounded-full bg-[color:var(--accent)]/60 touch-none"
         style={{ height: THUMB_H, top: `calc(${thumbPct * 100}% - ${thumbPct * THUMB_H}px)` }}
         onTouchStart={handleTouchStart}
       />
@@ -88,7 +99,7 @@ const CAT_COLORS = {
   'Élaborés': 'text-rose-600',
   'Conserves': 'text-emerald-600',
   'Surgelés': 'text-cyan-600',
-  'Autres': 'text-gray-500',
+  'Autres': 'ink-3',
 }
 const CAT_EMOJIS = {
   'PÂTES': '🍝',
@@ -111,24 +122,24 @@ function DraggablePlatCard({ plat, isSelected, onSelect }) {
       ref={setNodeRef}
       style={style}
       onClick={() => onSelect(plat.id)}
-      className={`flex items-center gap-2 pl-1 pr-3 py-2 rounded-xl border bg-white shadow-sm select-none transition-all ${
+      className={`flex items-center gap-2 pl-1 pr-3 py-2 rounded-xl border select-none transition-all ${
         isDragging ? 'opacity-50 shadow-md z-10 relative' : ''
       } ${
         isSelected
-          ? 'border-green-400 ring-2 ring-green-100 bg-green-50'
-          : 'border-gray-200 hover:border-green-300 hover:shadow'
+          ? 'border-[color:var(--accent)]/40 ring-2 ring-[color:var(--accent)]/20 accent-soft-bg'
+          : 'border-white/70 bg-white/60 hover:border-[color:var(--accent)]/40 hover:bg-white/80 backdrop-blur-sm'
       }`}
     >
       <span
         {...listeners}
         {...attributes}
-        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors px-1"
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0 ink-4 hover:ink-3 transition-colors px-1"
         aria-label="Déplacer"
       >
         <GripVertical size={14} />
       </span>
       <span className="text-base shrink-0 leading-none">{emoji}</span>
-      <span className={`text-sm font-medium whitespace-nowrap ${isSelected ? 'text-green-700' : 'text-gray-700'}`}>
+      <span className={`text-sm font-semibold whitespace-nowrap ${isSelected ? 'accent-text' : 'ink-2'}`}>
         {plat.nom}
       </span>
     </div>
@@ -142,18 +153,18 @@ function DroppableCategorie({ categorie, plats, selectedPlatId, onSelectPlat }) 
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-xl p-3 -mx-3 transition-all ${isOver ? 'bg-green-50 ring-2 ring-green-300 ring-offset-1' : ''}`}
+      className={`rounded-xl p-3 -mx-3 transition-all ${isOver ? 'accent-soft-bg ring-2 ring-[color:var(--accent)]/40 ring-offset-1' : ''}`}
     >
       <h3 className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest mb-3 ${
-        isOver ? 'text-green-600' : (CAT_COLORS[categorie] ?? 'text-gray-400')
+        isOver ? 'accent-text' : (CAT_COLORS[categorie] ?? 'ink-3')
       }`}>
         <span>{CAT_EMOJIS[categorie]}</span>
         {categorie}
-        <span className="normal-case font-normal text-gray-300">{plats.length}</span>
+        <span className="normal-case font-normal ink-4">{plats.length}</span>
       </h3>
       <div className="flex flex-wrap gap-2 min-h-10">
         {plats.length === 0 ? (
-          <span className={`text-xs italic self-center transition-colors ${isOver ? 'text-green-400' : 'text-gray-200'}`}>
+          <span className={`text-xs italic self-center transition-colors ${isOver ? 'accent-text' : 'ink-4'}`}>
             Déposer ici
           </span>
         ) : (
@@ -172,15 +183,16 @@ function DroppableCategorie({ categorie, plats, selectedPlatId, onSelectPlat }) 
 }
 
 // ---- Toggle Tricount compact (3 boutons emoji) ----
+// Codes domaine : me=bleu, both=accent (50/50), ali=rose
 const SPLIT_MINI_OPTS = [
   { val: 'me', emoji: '👦', active: 'bg-blue-500 text-white', title: 'Moi' },
-  { val: 'both', emoji: '👥', active: 'bg-green-500 text-white', title: '50/50' },
+  { val: 'both', emoji: '👥', active: 'accent-bg', title: '50/50' },
   { val: 'ali', emoji: '👩', active: 'bg-pink-500 text-white', title: 'Ali' },
 ]
 
 function SplitMini({ value, onChange }) {
   return (
-    <div className="flex rounded border border-gray-200 overflow-hidden shrink-0">
+    <div className="flex rounded-md border border-white/70 bg-white/50 overflow-hidden shrink-0">
       {SPLIT_MINI_OPTS.map((opt, i) => (
         <button
           key={opt.val}
@@ -188,8 +200,8 @@ function SplitMini({ value, onChange }) {
           onPointerDown={e => e.stopPropagation()}
           onClick={e => { e.stopPropagation(); onChange(opt.val) }}
           title={opt.title}
-          className={`w-6 h-6 flex items-center justify-center text-[11px] transition-colors ${i > 0 ? 'border-l border-gray-100' : ''} ${
-            value === opt.val ? opt.active : 'bg-white hover:bg-gray-50'
+          className={`w-6 h-6 flex items-center justify-center text-[11px] transition-colors ${i > 0 ? 'border-l border-white/70' : ''} ${
+            value === opt.val ? opt.active : 'hover:bg-white/80'
           }`}
         >
           {opt.emoji}
@@ -234,7 +246,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
           if (submittedRef.current) { submittedRef.current = false; return }
           confirmRename()
         }}
-        className="rounded-lg border-2 border-green-400 bg-white px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500 w-full"
+        className="rounded-lg border-2 border-[color:var(--accent)]/50 bg-white/80 px-3 py-1.5 text-sm ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40 w-full"
       />
     )
   }
@@ -243,17 +255,17 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 pl-3 pr-1.5 py-2 rounded-lg border bg-white shadow-sm select-none transition-opacity ${
+      className={`flex items-center gap-2 pl-3 pr-1.5 py-2 rounded-lg border bg-white/60 backdrop-blur-sm shadow-sm select-none transition-opacity ${
         isDragging ? 'opacity-50' : ''
-      } ${isAssigned ? 'border-gray-100' : 'border-orange-100'}`}
+      } ${isAssigned ? 'border-white/70' : 'border-orange-200/70'}`}
     >
-      <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'text-gray-700' : 'text-orange-600'}`}>{nom}</span>
+      <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'ink-2' : 'text-orange-600'}`}>{nom}</span>
       <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
       <button
         type="button"
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); setIsRenaming(true); setNewNom(nom) }}
-        className="text-gray-300 hover:text-green-500 transition-colors shrink-0"
+        className="ink-4 hover:accent-text transition-colors shrink-0"
         aria-label={`Renommer ${nom}`}
       >
         <Pencil size={11} />
@@ -267,7 +279,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
             onDelete()
           }
         }}
-        className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
+        className="ink-4 hover:text-red-500 transition-colors shrink-0"
         aria-label={`Supprimer ${nom}`}
       >
         <X size={10} />
@@ -275,7 +287,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
       <span
         {...listeners}
         {...attributes}
-        className="touch-none cursor-grab active:cursor-grabbing shrink-0 text-gray-300 hover:text-gray-500 transition-colors px-1"
+        className="touch-none cursor-grab active:cursor-grabbing shrink-0 ink-4 hover:ink-3 transition-colors px-1"
         aria-label="Déplacer"
       >
         <GripVertical size={12} />
@@ -292,18 +304,18 @@ function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngred
     <section
       ref={setNodeRef}
       className={`rounded-xl px-3 py-2.5 -mx-3 transition-all ${
-        isOver ? 'bg-green-50 ring-2 ring-green-300 ring-offset-1' : ''
+        isOver ? 'accent-soft-bg ring-2 ring-[color:var(--accent)]/40 ring-offset-1' : ''
       }`}
     >
       <h3 className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest ${
         condensed ? 'mb-0' : 'mb-2.5'
       } ${
-        isUnassigned ? 'text-orange-400' : isOver ? 'text-green-600' : 'text-gray-400'
+        isUnassigned ? 'text-orange-500' : isOver ? 'accent-text' : 'ink-3'
       }`}>
         {title}
-        <span className={`normal-case font-normal ${isOver ? 'text-green-500' : ''}`}>{ings.length}</span>
+        <span className={`normal-case font-normal ${isOver ? 'accent-text' : 'ink-4'}`}>{ings.length}</span>
         {condensed && isOver && (
-          <span className="text-green-500 font-normal normal-case ml-auto">↓ déposer ici</span>
+          <span className="accent-text font-normal normal-case ml-auto">↓ déposer ici</span>
         )}
       </h3>
       <div className={`flex flex-col gap-1.5 ${condensed ? 'hidden' : ''}`}>
@@ -348,9 +360,9 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
     <div
       ref={setRef}
       style={style}
-      className={`flex items-center gap-2 pl-4 pr-2 py-3 bg-white transition-all ${
-        isDragging ? 'opacity-40 shadow-lg relative z-10' : ''
-      } ${isOver && !isDragging ? 'border-t-2 border-green-400' : ''}`}
+      className={`flex items-center gap-2 pl-4 pr-2 py-3 transition-all ${
+        isDragging ? 'opacity-40 shadow-lg relative z-10 bg-white/80' : ''
+      } ${isOver && !isDragging ? 'border-t-2 border-[color:var(--accent)]/60' : ''}`}
     >
       {editMode ? (
         <input
@@ -359,18 +371,18 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
           value={editNom}
           onChange={e => setEditNom(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 rounded-lg border border-green-400 bg-white px-3 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="flex-1 rounded-lg border border-[color:var(--accent)]/50 bg-white/80 px-3 py-1 text-sm ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
         />
       ) : (
-        <span className="flex-1 text-sm font-medium text-gray-800">{rayon.nom}</span>
+        <span className="flex-1 text-sm font-semibold ink">{rayon.nom}</span>
       )}
 
       {editMode ? (
         <div className="flex gap-1">
-          <button onClick={confirmEdit} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" aria-label="Confirmer">
+          <button onClick={confirmEdit} className="p-1.5 accent-text hover:accent-soft-bg rounded-lg transition-colors" aria-label="Confirmer">
             <Check size={14} />
           </button>
-          <button onClick={cancelEdit} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Annuler">
+          <button onClick={cancelEdit} className="p-1.5 ink-3 hover:bg-white/60 rounded-lg transition-colors" aria-label="Annuler">
             <X size={14} />
           </button>
         </div>
@@ -378,7 +390,7 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
         <div className="flex gap-1">
           <button
             onClick={() => { setEditMode(true); setEditNom(rayon.nom) }}
-            className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+            className="p-1.5 ink-3 hover:accent-text hover:accent-soft-bg rounded-lg transition-colors"
             aria-label="Renommer"
           >
             <Pencil size={14} />
@@ -386,7 +398,7 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
           <button
             onClick={() => supprimerRayon(magasinCourant.id, rayon.id)}
             disabled={total <= 1}
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+            className="p-1.5 ink-3 hover:text-red-500 hover:bg-red-50/50 rounded-lg transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
             aria-label="Supprimer"
           >
             <Trash2 size={14} />
@@ -398,7 +410,7 @@ function DraggableRayonRow({ rayon, magasinCourant, total, renommerRayon, suppri
         {...listeners}
         {...attributes}
         type="button"
-        className="touch-none p-1 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors shrink-0"
+        className="touch-none p-1 cursor-grab active:cursor-grabbing ink-4 hover:ink-3 transition-colors shrink-0"
         aria-label="Réordonner"
       >
         <GripVertical size={16} />
@@ -451,7 +463,7 @@ function Parametres() {
 
   // --- État onglet Ingrédients ---
   const [searchIngredients, setSearchIngredients] = useState('')
-  const [activeIngId, setActiveIngId] = useState(null) // drag overlay + condensed mode
+  const [activeIngId, setActiveIngId] = useState(null)
   const [nomNouvelIng, setNomNouvelIng] = useState('')
   const [rayonNouvelIng, setRayonNouvelIng] = useState('')
   const [splitNouvelIng, setSplitNouvelIng] = useState('both')
@@ -467,7 +479,6 @@ function Parametres() {
     useSensor(TouchSensor, { activationConstraint: { delay: 0, tolerance: 5 } }),
   )
 
-  // Noms de tous les ingrédients connus (pour datalist dans les plats)
   const _ingNamesSet = new Set()
   for (const p of plats) for (const i of p.ingredients) _ingNamesSet.add(i.nom)
   for (const nom of standaloneIngredients) _ingNamesSet.add(nom)
@@ -611,11 +622,11 @@ function Parametres() {
             {plat.ingredients.map(ing => (
               <li
                 key={ing.id}
-                className="flex items-center gap-1.5 text-sm text-gray-700 bg-gray-50 rounded-lg px-2.5 py-1.5 min-w-0"
+                className="flex items-center gap-1.5 text-sm ink-2 glass-sm px-2.5 py-1.5 min-w-0"
               >
                 {editIngId === ing.id ? (
                   <>
-                    <span className="font-medium min-w-0 flex-1 truncate text-xs">{ing.nom}</span>
+                    <span className="font-semibold min-w-0 flex-1 truncate text-xs">{ing.nom}</span>
                     <input
                       type="number" min="0" step="any" autoFocus
                       value={editIngValues.quantite}
@@ -624,46 +635,46 @@ function Parametres() {
                         if (e.key === 'Enter') { e.preventDefault(); confirmEditIng(plat.id) }
                         if (e.key === 'Escape') setEditIngId(null)
                       }}
-                      className="w-16 shrink-0 rounded-md border border-green-400 bg-white px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className={`w-16 shrink-0 ${inputXs}`}
                     />
                     <select
                       value={editIngValues.unite}
                       onChange={e => setEditIngValues(prev => ({ ...prev, unite: e.target.value }))}
-                      className="shrink-0 rounded-md border border-green-400 bg-white px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className={`shrink-0 ${inputXs}`}
                     >
                       {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
                     </select>
                     <select
                       value={getRayon(ing.nom)}
                       onChange={e => setRayon(ing.nom, e.target.value)}
-                      className="w-24 shrink-0 rounded-md border border-gray-200 bg-white px-1 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className={`w-24 shrink-0 ${inputXs}`}
                     >
                       <option value="">— rayon —</option>
                       {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <button onClick={() => confirmEditIng(plat.id)} className="p-0.5 text-green-600 hover:bg-green-50 rounded shrink-0" aria-label="Confirmer">
+                    <button onClick={() => confirmEditIng(plat.id)} className="p-0.5 accent-text hover:accent-soft-bg rounded shrink-0" aria-label="Confirmer">
                       <Check size={13} />
                     </button>
-                    <button onClick={() => setEditIngId(null)} className="p-0.5 text-gray-300 hover:text-gray-500 rounded shrink-0" aria-label="Annuler">
+                    <button onClick={() => setEditIngId(null)} className="p-0.5 ink-4 hover:ink-3 rounded shrink-0" aria-label="Annuler">
                       <X size={13} />
                     </button>
                   </>
                 ) : (
                   <>
-                    <span className="font-medium min-w-0 flex-1 truncate">{ing.nom}</span>
-                    <span className="text-gray-400 text-xs shrink-0 whitespace-nowrap">{ing.quantite} {ing.unite}</span>
+                    <span className="font-semibold min-w-0 flex-1 truncate ink">{ing.nom}</span>
+                    <span className="ink-3 text-xs shrink-0 whitespace-nowrap mono">{ing.quantite} {ing.unite}</span>
                     <select
                       value={getRayon(ing.nom)}
                       onChange={e => setRayon(ing.nom, e.target.value)}
-                      className="w-28 shrink-0 rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                      className={`w-28 shrink-0 ${inputXs}`}
                     >
                       <option value="">— rayon —</option>
                       {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
-                    <button onClick={() => startEditIng(ing)} className="p-0.5 text-gray-300 hover:text-green-600 transition-colors shrink-0" aria-label={`Modifier ${ing.nom}`}>
+                    <button onClick={() => startEditIng(ing)} className="p-0.5 ink-4 hover:accent-text transition-colors shrink-0" aria-label={`Modifier ${ing.nom}`}>
                       <Pencil size={11} />
                     </button>
-                    <button onClick={() => supprimerIngredient(plat.id, ing.id)} className="p-0.5 text-gray-300 hover:text-red-500 transition-colors shrink-0" aria-label={`Supprimer ${ing.nom}`}>
+                    <button onClick={() => supprimerIngredient(plat.id, ing.id)} className="p-0.5 ink-4 hover:text-red-500 transition-colors shrink-0" aria-label={`Supprimer ${ing.nom}`}>
                       <Trash2 size={12} />
                     </button>
                   </>
@@ -672,7 +683,7 @@ function Parametres() {
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-gray-400 italic text-center py-3">Aucun ingrédient pour ce plat.</p>
+          <p className="text-xs ink-3 italic text-center py-3">Aucun ingrédient pour ce plat.</p>
         )}
 
         <form onSubmit={e => handleAjouterIngredient(e, plat.id)} className="flex flex-wrap gap-1.5 pt-1">
@@ -685,7 +696,7 @@ function Parametres() {
             value={getIngredientForm(plat.id).nom}
             onChange={e => setIngredientField(plat.id, 'nom', e.target.value)}
             placeholder="Ingrédient"
-            className="flex-1 min-w-24 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className={`flex-1 min-w-24 ${inputSm}`}
             required
           />
           <input
@@ -693,17 +704,17 @@ function Parametres() {
             value={getIngredientForm(plat.id).quantite}
             onChange={e => setIngredientField(plat.id, 'quantite', e.target.value)}
             placeholder="Qté"
-            className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className={`w-16 ${inputSm}`}
             required
           />
           <select
             value={getIngredientForm(plat.id).unite}
             onChange={e => setIngredientField(plat.id, 'unite', e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className={inputSm}
           >
             {UNITES.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
-          <button type="submit" className="flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
+          <button type="submit" className={btnPrimarySm}>
             <Plus size={14} />Ajouter
           </button>
         </form>
@@ -717,8 +728,8 @@ function Parametres() {
     const isEditingNom = editPlatNomId === plat.id
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 px-4 py-3.5 border-b border-gray-100">
+      <div className="glass sheen">
+        <div className="flex items-center gap-2 px-4 py-3.5 border-b border-white/40">
           <span className="text-xl shrink-0 leading-none">{emoji}</span>
 
           {isEditingNom ? (
@@ -734,25 +745,25 @@ function Parametres() {
                 if (editPlatNomSubmittedRef.current) { editPlatNomSubmittedRef.current = false; return }
                 confirmEditPlatNom(plat.id)
               }}
-              className="flex-1 rounded-lg border border-green-400 bg-white px-3 py-1 text-base font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 rounded-lg border border-[color:var(--accent)]/50 bg-white/80 px-3 py-1 text-base font-bold ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
             />
           ) : (
             <>
-              <h3 className="flex-1 text-base font-semibold text-gray-900 truncate">{plat.nom}</h3>
-              <button onClick={() => startEditPlatNom(plat)} className="p-1.5 text-gray-300 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors shrink-0" aria-label="Renommer le plat">
+              <h3 className="flex-1 text-base font-bold ink truncate">{plat.nom}</h3>
+              <button onClick={() => startEditPlatNom(plat)} className="p-1.5 ink-4 hover:accent-text hover:accent-soft-bg rounded-lg transition-colors shrink-0" aria-label="Renommer le plat">
                 <Pencil size={14} />
               </button>
             </>
           )}
 
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${CAT_COLORS[plat.categorie ?? 'Autres'] ?? 'text-gray-400'} bg-gray-100`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold shrink-0 ${CAT_COLORS[plat.categorie ?? 'Autres'] ?? 'ink-3'} bg-white/70 border border-white/70`}>
             {plat.categorie ?? 'Autres'}
           </span>
-          <button onClick={() => { supprimerPlat(plat.id); setSelectedPlatId(null) }} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0" aria-label={`Supprimer ${plat.nom}`}>
+          <button onClick={() => { supprimerPlat(plat.id); setSelectedPlatId(null) }} className="p-1.5 ink-4 hover:text-red-500 hover:bg-red-50/50 rounded-lg transition-colors shrink-0" aria-label={`Supprimer ${plat.nom}`}>
             <Trash2 size={15} />
           </button>
           {showClose && (
-            <button onClick={() => setSelectedPlatId(null)} className="p-1.5 text-gray-300 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors shrink-0" aria-label="Fermer">
+            <button onClick={() => setSelectedPlatId(null)} className="p-1.5 ink-4 hover:ink-2 hover:bg-white/60 rounded-lg transition-colors shrink-0" aria-label="Fermer">
               <X size={15} />
             </button>
           )}
@@ -766,363 +777,363 @@ function Parametres() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="max-w-5xl mx-auto px-4 py-6">
+    <main className="max-w-5xl mx-auto px-4 py-6 anim-in">
 
-        {/* ===== ONGLET PLATS ===== */}
-        {activeTab === 'plats' && (
-          <div className="md:grid md:grid-cols-[1fr_360px] md:gap-8 md:items-start">
-            <div className="space-y-4">
-              <section>
-                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Ajouter un plat</h2>
-                <form onSubmit={handleAjouterPlat} className="flex flex-wrap gap-2">
-                  <input
-                    type="text" value={nomPlat} onChange={e => setNomPlat(e.target.value)}
-                    placeholder="Nom du plat (ex: Poulet rôti)"
-                    className="flex-1 min-w-40 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    required
-                  />
-                  <select value={categorieNouveauPlat} onChange={e => setCategorieNouveauPlat(e.target.value)} className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500">
-                    {CATEGORIES_ORDER.map(c => <option key={c} value={c}>{CAT_EMOJIS[c]} {c}</option>)}
-                  </select>
-                  <button type="submit" className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
-                    <Plus size={16} />Ajouter
-                  </button>
-                </form>
-              </section>
+      <div className="mb-6">
+        <p className="chip mb-1.5">Paramètres</p>
+        <h1 className="text-3xl font-extrabold tracking-tight ink capitalize">{activeTab}</h1>
+      </div>
 
-              <DndContext sensors={sensors} onDragEnd={handlePlatDragEnd}>
-                <div className="space-y-1">
-                  {CATEGORIES_ORDER
-                    .filter(cat => cat !== 'Autres' || byCategorie['Autres']?.length > 0)
-                    .map(cat => (
-                      <DroppableCategorie key={cat} categorie={cat} plats={byCategorie[cat] ?? []} selectedPlatId={selectedPlatId} onSelectPlat={handleSelectPlat} />
-                    ))
-                  }
-                </div>
-              </DndContext>
+      {/* ===== ONGLET PLATS ===== */}
+      {activeTab === 'plats' && (
+        <div className="md:grid md:grid-cols-[1fr_360px] md:gap-8 md:items-start">
+          <div className="space-y-4">
+            <section>
+              <h2 className="text-xs font-bold ink-3 uppercase tracking-widest mb-3">Ajouter un plat</h2>
+              <form onSubmit={handleAjouterPlat} className="flex flex-wrap gap-2">
+                <input
+                  type="text" value={nomPlat} onChange={e => setNomPlat(e.target.value)}
+                  placeholder="Nom du plat (ex: Poulet rôti)"
+                  className={`flex-1 min-w-40 ${inputBase}`}
+                  required
+                />
+                <select value={categorieNouveauPlat} onChange={e => setCategorieNouveauPlat(e.target.value)} className={inputBase}>
+                  {CATEGORIES_ORDER.map(c => <option key={c} value={c}>{CAT_EMOJIS[c]} {c}</option>)}
+                </select>
+                <button type="submit" className={btnPrimary}>
+                  <Plus size={16} />Ajouter
+                </button>
+              </form>
+            </section>
 
-              {selectedPlat && (
-                <div className="md:hidden mt-2">
-                  {renderEditPanel(selectedPlat, true)}
-                </div>
-              )}
-            </div>
+            <DndContext sensors={sensors} onDragEnd={handlePlatDragEnd}>
+              <div className="space-y-1">
+                {CATEGORIES_ORDER
+                  .filter(cat => cat !== 'Autres' || byCategorie['Autres']?.length > 0)
+                  .map(cat => (
+                    <DroppableCategorie key={cat} categorie={cat} plats={byCategorie[cat] ?? []} selectedPlatId={selectedPlatId} onSelectPlat={handleSelectPlat} />
+                  ))
+                }
+              </div>
+            </DndContext>
 
-            <div className="hidden md:block sticky top-20">
-              {selectedPlat ? renderEditPanel(selectedPlat) : (
-                <div className="flex flex-col items-center justify-center py-24 text-gray-300">
-                  <ChevronDown size={36} className="mb-3" />
-                  <p className="text-sm text-center leading-relaxed">Cliquez sur un plat<br />pour modifier ses ingrédients</p>
-                </div>
-              )}
-            </div>
+            {selectedPlat && (
+              <div className="md:hidden mt-2">
+                {renderEditPanel(selectedPlat, true)}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* ===== ONGLET INGRÉDIENTS ===== */}
-        {activeTab === 'ingredients' && (() => {
-          const seen = new Map()
-          for (const plat of plats) {
-            for (const ing of plat.ingredients) {
+          <div className="hidden md:block sticky top-20">
+            {selectedPlat ? renderEditPanel(selectedPlat) : (
+              <div className="flex flex-col items-center justify-center py-24 ink-4 glass sheen">
+                <ChevronDown size={36} className="mb-3" />
+                <p className="text-sm text-center leading-relaxed ink-3">Cliquez sur un plat<br />pour modifier ses ingrédients</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== ONGLET INGRÉDIENTS ===== */}
+      {activeTab === 'ingredients' && (() => {
+        const seen = new Map()
+        for (const plat of plats) {
+          for (const ing of plat.ingredients) {
+            const key = ing.nom.toLowerCase()
+            if (!seen.has(key)) seen.set(key, ing.nom)
+          }
+        }
+        for (const items of Object.values(espacesLibres)) {
+          for (const ing of items) {
+            if (!ing.platId) {
               const key = ing.nom.toLowerCase()
               if (!seen.has(key)) seen.set(key, ing.nom)
             }
           }
-          for (const items of Object.values(espacesLibres)) {
-            for (const ing of items) {
-              if (!ing.platId) {
-                const key = ing.nom.toLowerCase()
-                if (!seen.has(key)) seen.set(key, ing.nom)
-              }
-            }
+        }
+        for (const nom of standaloneIngredients) {
+          const key = nom.toLowerCase()
+          if (!seen.has(key)) seen.set(key, nom)
+        }
+
+        const query = searchIngredients.toLowerCase().trim()
+        const filtered = [...seen.entries()]
+          .filter(([key]) => query === '' || key.includes(query))
+          .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+
+        const byRayon = {}
+        const unassigned = []
+        for (const [key, nom] of filtered) {
+          const rayon = getRayon(nom)
+          if (rayon && rayonsActifs.includes(rayon)) {
+            if (!byRayon[rayon]) byRayon[rayon] = []
+            byRayon[rayon].push({ key, nom })
+          } else {
+            unassigned.push({ key, nom })
           }
-          for (const nom of standaloneIngredients) {
-            const key = nom.toLowerCase()
-            if (!seen.has(key)) seen.set(key, nom)
-          }
+        }
 
-          const query = searchIngredients.toLowerCase().trim()
-          const filtered = [...seen.entries()]
-            .filter(([key]) => query === '' || key.includes(query))
-            .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+        const sections = rayonsActifs.map(r => ({ nom: r, ings: byRayon[r] ?? [] }))
 
-          const byRayon = {}
-          const unassigned = []
-          for (const [key, nom] of filtered) {
-            const rayon = getRayon(nom)
-            if (rayon && rayonsActifs.includes(rayon)) {
-              if (!byRayon[rayon]) byRayon[rayon] = []
-              byRayon[rayon].push({ key, nom })
-            } else {
-              unassigned.push({ key, nom })
-            }
-          }
+        const allIngNames = [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+        const suggestionsDoublons = detecterDoublons(allIngNames)
 
-          const sections = rayonsActifs.map(r => ({ nom: r, ings: byRayon[r] ?? [] }))
-
-          // Liste + doublons potentiels pour la modale de fusion
-          const allIngNames = [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
-          const suggestionsDoublons = detecterDoublons(allIngNames)
-
-          return (
-            <div className="max-w-2xl">
-              {/* Modale de fusion */}
-              {showMergeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
-                    <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
-                      <GitMerge size={18} className="text-green-600" />
-                      Fusionner des ingrédients
-                    </h2>
-                    {suggestionsDoublons.length > 0 && (
-                      <div className="flex flex-col gap-1.5">
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Suggestions</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {suggestionsDoublons.map(([a, b]) => (
-                            <button
-                              key={`${a}|${b}`}
-                              type="button"
-                              onClick={() => { setMergeKeep(a); setMergeRemove(b) }}
-                              className="text-xs px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                            >
-                              {a} ↔ {b}
-                            </button>
-                          ))}
-                        </div>
+        return (
+          <div className="max-w-2xl">
+            {/* Modale de fusion */}
+            {showMergeModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 anim-pop">
+                <div className="glass-strong sheen w-full max-w-sm p-6 flex flex-col gap-4">
+                  <h2 className="text-base font-bold ink flex items-center gap-2">
+                    <GitMerge size={18} className="accent-text" />
+                    Fusionner des ingrédients
+                  </h2>
+                  {suggestionsDoublons.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-semibold ink-3 uppercase tracking-wide">Suggestions</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {suggestionsDoublons.map(([a, b]) => (
+                          <button
+                            key={`${a}|${b}`}
+                            type="button"
+                            onClick={() => { setMergeKeep(a); setMergeRemove(b) }}
+                            className="text-xs px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50/70 text-amber-700 hover:bg-amber-100 transition-colors"
+                          >
+                            {a} ↔ {b}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                    <div className="flex flex-col gap-3">
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Ingrédient à conserver (A)
-                      </label>
-                      <select
-                        value={mergeKeep}
-                        onChange={e => setMergeKeep(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
-                      >
-                        <option value="">— choisir A —</option>
-                        {allIngNames.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Doublon à supprimer (B)
-                      </label>
-                      <select
-                        value={mergeRemove}
-                        onChange={e => setMergeRemove(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-500"
-                      >
-                        <option value="">— choisir B —</option>
-                        {allIngNames.filter(n => n !== mergeKeep).map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
                     </div>
-                    {mergeKeep && mergeRemove && (
-                      <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                        Toutes les occurrences de <strong>«&nbsp;{mergeRemove}&nbsp;»</strong> dans les recettes seront remplacées par <strong>«&nbsp;{mergeKeep}&nbsp;»</strong>, puis supprimées du catalogue.
-                      </p>
-                    )}
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={() => { setShowMergeModal(false); setMergeKeep(''); setMergeRemove('') }}
-                        className="px-4 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-100 transition-colors"
-                      >
-                        Annuler
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleFusion}
-                        disabled={!mergeKeep || !mergeRemove || mergeKeep === mergeRemove}
-                        className="px-4 py-2 rounded-lg bg-green-600 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                      >
-                        Valider la fusion
-                      </button>
-                    </div>
+                  )}
+                  <div className="flex flex-col gap-3">
+                    <label className="text-xs font-semibold ink-3 uppercase tracking-wide">
+                      Ingrédient à conserver (A)
+                    </label>
+                    <select
+                      value={mergeKeep}
+                      onChange={e => setMergeKeep(e.target.value)}
+                      className={inputBase}
+                    >
+                      <option value="">— choisir A —</option>
+                      {allIngNames.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                    <label className="text-xs font-semibold ink-3 uppercase tracking-wide">
+                      Doublon à supprimer (B)
+                    </label>
+                    <select
+                      value={mergeRemove}
+                      onChange={e => setMergeRemove(e.target.value)}
+                      className={inputBase}
+                    >
+                      <option value="">— choisir B —</option>
+                      {allIngNames.filter(n => n !== mergeKeep).map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  {mergeKeep && mergeRemove && (
+                    <p className="text-xs text-amber-700 bg-amber-50/70 border border-amber-200 rounded-lg px-3 py-2">
+                      Toutes les occurrences de <strong>«&nbsp;{mergeRemove}&nbsp;»</strong> dans les recettes seront remplacées par <strong>«&nbsp;{mergeKeep}&nbsp;»</strong>, puis supprimées du catalogue.
+                    </p>
+                  )}
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setShowMergeModal(false); setMergeKeep(''); setMergeRemove('') }}
+                      className="px-4 py-2 rounded-xl text-sm ink-2 hover:bg-white/60 transition-colors"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleFusion}
+                      disabled={!mergeKeep || !mergeRemove || mergeKeep === mergeRemove}
+                      className="px-4 py-2 rounded-xl accent-bg text-sm font-semibold hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Valider la fusion
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              <FastScroll />
+            <FastScroll />
 
-              {/* Ajout rapide d'ingrédient */}
-              <form onSubmit={handleAjouterIngredientStandalone} className="flex flex-wrap gap-2 mb-4">
+            {/* Ajout rapide d'ingrédient */}
+            <form onSubmit={handleAjouterIngredientStandalone} className="flex flex-wrap gap-2 mb-4">
+              <input
+                type="text"
+                value={nomNouvelIng}
+                onChange={e => setNomNouvelIng(e.target.value)}
+                placeholder="Nouvel ingrédient…"
+                className={`flex-1 min-w-36 ${inputBase}`}
+                required
+              />
+              <select
+                value={rayonNouvelIng}
+                onChange={e => setRayonNouvelIng(e.target.value)}
+                className={inputBase}
+              >
+                <option value="">— rayon —</option>
+                {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-xs ink-3">Tricount</span>
+                <SplitMini value={splitNouvelIng} onChange={setSplitNouvelIng} />
+              </div>
+              <button
+                type="submit"
+                className={`${btnPrimary} shrink-0`}
+              >
+                <Plus size={15} />
+                Ajouter
+              </button>
+            </form>
+
+            {/* Recherche + bouton fusion */}
+            <div className="flex gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 ink-3 pointer-events-none" />
                 <input
                   type="text"
-                  value={nomNouvelIng}
-                  onChange={e => setNomNouvelIng(e.target.value)}
-                  placeholder="Nouvel ingrédient…"
-                  className="flex-1 min-w-36 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  value={searchIngredients}
+                  onChange={e => setSearchIngredients(e.target.value)}
+                  placeholder="Rechercher un ingrédient…"
+                  className={`w-full pl-9 pr-3 ${inputBase}`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMergeModal(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-white/70 bg-white/60 px-3 py-2 text-sm ink-2 hover:border-[color:var(--accent)]/40 hover:accent-text transition-colors shrink-0"
+                title="Fusionner des doublons"
+              >
+                <GitMerge size={15} />
+                <span className="hidden sm:inline">Fusionner</span>
+              </button>
+            </div>
+
+            {seen.size === 0 ? (
+              <p className="text-sm ink-3 text-center py-8">
+                Aucun ingrédient connu. Ajoutez des plats, des ingrédients libres dans le Planning, ou utilisez le formulaire ci-dessus.
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="text-sm ink-3 text-center py-8">Aucun résultat pour cette recherche.</p>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={pointerWithin}
+                measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+                onDragStart={handleIngredientDragStart}
+                onDragEnd={handleIngredientDragEnd}
+                onDragCancel={() => setActiveIngId(null)}
+              >
+                <div className="space-y-1">
+                  {(unassigned.length > 0 || ingDragging) && (
+                    <DroppableSection
+                      sectionId="section:__unassigned__"
+                      title="Non classés"
+                      ings={unassigned}
+                      isUnassigned={true}
+                      onRenameIngredient={handleRenameIngredient}
+                      onDeleteIngredient={handleDeleteIngredient}
+                      condensed={ingDragging}
+                    />
+                  )}
+                  {sections.map(({ nom: rayonNom, ings }) => (
+                    <DroppableSection
+                      key={rayonNom}
+                      sectionId={`section:${rayonNom}`}
+                      title={rayonNom}
+                      ings={ings}
+                      isUnassigned={false}
+                      onRenameIngredient={handleRenameIngredient}
+                      onDeleteIngredient={handleDeleteIngredient}
+                      condensed={ingDragging}
+                    />
+                  ))}
+                </div>
+
+                <DragOverlay dropAnimation={null}>
+                  {activeIngId && (
+                    <div
+                      style={{
+                        transform: 'scale(1.06) rotate(2deg)',
+                        boxShadow: '0 12px 32px -4px rgba(0,0,0,0.25), 0 4px 10px -2px rgba(0,0,0,0.15)',
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border bg-white/90 backdrop-blur border-[color:var(--accent)]/50 ink-2 opacity-95 select-none pointer-events-none"
+                    >
+                      <span className="truncate max-w-28">{activeIngId}</span>
+                      <span className="accent-text shrink-0 ml-0.5"><Pencil size={9} /></span>
+                      <span className="text-red-400 shrink-0"><X size={10} /></span>
+                    </div>
+                  )}
+                </DragOverlay>
+              </DndContext>
+            )}
+
+            <p className="text-xs ink-3 mt-4 text-center">
+              {seen.size} ingrédient{seen.size > 1 ? 's' : ''} connu{seen.size > 1 ? 's' : ''} · Magasin actif : {magasinActif}
+            </p>
+          </div>
+        )
+      })()}
+
+      {/* ===== ONGLET RAYONS ===== */}
+      {activeTab === 'rayons' && (
+        <div className="md:grid md:grid-cols-[200px_1fr] md:gap-8 md:items-start">
+          <section>
+            <h2 className="text-xs font-bold ink-3 uppercase tracking-widest mb-3">Magasin</h2>
+            <div className="flex gap-2 flex-wrap md:flex-col">
+              {magasins.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setMagasinActif(m.nom)}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm border transition-all ${
+                    magasinActif === m.nom
+                      ? 'accent-bg border-[color:var(--accent)] shadow-md font-bold'
+                      : 'bg-white/60 ink-2 border-white/70 hover:border-[color:var(--accent)]/40 hover:accent-text'
+                  }`}
+                >
+                  <Store size={15} />{m.nom}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {magasinCourant && (
+            <section>
+              <h2 className="text-xs font-bold ink-3 uppercase tracking-widest mb-3">
+                Rayons — <span className="ink normal-case font-bold">{magasinCourant.nom}</span>
+              </h2>
+
+              <DndContext sensors={sensors} onDragEnd={handleRayonDragEnd}>
+                <div className="glass sheen divide-y divide-white/40 overflow-hidden">
+                  {magasinCourant.rayons.map(rayon => (
+                    <DraggableRayonRow
+                      key={rayon.id} rayon={rayon} magasinCourant={magasinCourant}
+                      total={magasinCourant.rayons.length} renommerRayon={renommerRayon} supprimerRayon={supprimerRayon}
+                    />
+                  ))}
+                </div>
+              </DndContext>
+
+              <form onSubmit={handleAjouterRayon} className="flex gap-2 mt-4">
+                <input
+                  type="text" value={nouveauRayon} onChange={e => setNouveauRayon(e.target.value)}
+                  placeholder="Nom du nouveau rayon"
+                  className={`flex-1 ${inputBase}`}
                   required
                 />
-                <select
-                  value={rayonNouvelIng}
-                  onChange={e => setRayonNouvelIng(e.target.value)}
-                  className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="">— rayon —</option>
-                  {rayonsActifs.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-xs text-gray-400">Tricount</span>
-                  <SplitMini value={splitNouvelIng} onChange={setSplitNouvelIng} />
-                </div>
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all shrink-0"
-                >
-                  <Plus size={15} />
-                  Ajouter
+                <button type="submit" className={btnPrimary}>
+                  <Plus size={16} />Ajouter
                 </button>
               </form>
-
-              {/* Recherche + bouton fusion */}
-              <div className="flex gap-2 mb-4">
-                <div className="relative flex-1">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchIngredients}
-                    onChange={e => setSearchIngredients(e.target.value)}
-                    placeholder="Rechercher un ingrédient…"
-                    className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowMergeModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500 hover:border-green-400 hover:text-green-600 transition-colors shrink-0"
-                  title="Fusionner des doublons"
-                >
-                  <GitMerge size={15} />
-                  <span className="hidden sm:inline">Fusionner</span>
-                </button>
-              </div>
-
-              {seen.size === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">
-                  Aucun ingrédient connu. Ajoutez des plats, des ingrédients libres dans le Planning, ou utilisez le formulaire ci-dessus.
-                </p>
-              ) : filtered.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">Aucun résultat pour cette recherche.</p>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={pointerWithin}
-                  measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-                  onDragStart={handleIngredientDragStart}
-                  onDragEnd={handleIngredientDragEnd}
-                  onDragCancel={() => setActiveIngId(null)}
-                >
-                  <div className="space-y-1">
-                    {/* Non classés toujours en premier */}
-                    {(unassigned.length > 0 || ingDragging) && (
-                      <DroppableSection
-                        sectionId="section:__unassigned__"
-                        title="Non classés"
-                        ings={unassigned}
-                        isUnassigned={true}
-                        onRenameIngredient={handleRenameIngredient}
-                        onDeleteIngredient={handleDeleteIngredient}
-                        condensed={ingDragging}
-                      />
-                    )}
-                    {sections.map(({ nom: rayonNom, ings }) => (
-                      <DroppableSection
-                        key={rayonNom}
-                        sectionId={`section:${rayonNom}`}
-                        title={rayonNom}
-                        ings={ings}
-                        isUnassigned={false}
-                        onRenameIngredient={handleRenameIngredient}
-                        onDeleteIngredient={handleDeleteIngredient}
-                        condensed={ingDragging}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Overlay : élément physique qui suit le curseur */}
-                  <DragOverlay dropAnimation={null}>
-                    {activeIngId && (
-                      <div
-                        style={{
-                          transform: 'scale(1.06) rotate(2deg)',
-                          boxShadow: '0 12px 32px -4px rgba(0,0,0,0.25), 0 4px 10px -2px rgba(0,0,0,0.15)',
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border bg-white border-green-400 text-gray-700 opacity-95 select-none pointer-events-none"
-                      >
-                        <span className="truncate max-w-28">{activeIngId}</span>
-                        <span className="text-green-500 shrink-0 ml-0.5"><Pencil size={9} /></span>
-                        <span className="text-red-400 shrink-0"><X size={10} /></span>
-                      </div>
-                    )}
-                  </DragOverlay>
-                </DndContext>
-              )}
-
-              <p className="text-xs text-gray-400 mt-4 text-center">
-                {seen.size} ingrédient{seen.size > 1 ? 's' : ''} connu{seen.size > 1 ? 's' : ''} · Magasin actif : {magasinActif}
-              </p>
-            </div>
-          )
-        })()}
-
-        {/* ===== ONGLET RAYONS ===== */}
-        {activeTab === 'rayons' && (
-          <div className="md:grid md:grid-cols-[200px_1fr] md:gap-8 md:items-start">
-            <section>
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Magasin</h2>
-              <div className="flex gap-2 flex-wrap md:flex-col">
-                {magasins.map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => setMagasinActif(m.nom)}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm border-2 transition-all ${
-                      magasinActif === m.nom
-                        ? 'bg-green-600 text-white border-green-700 shadow-md font-semibold'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:text-green-700'
-                    }`}
-                  >
-                    <Store size={15} />{m.nom}
-                  </button>
-                ))}
-              </div>
             </section>
+          )}
+        </div>
+      )}
 
-            {magasinCourant && (
-              <section>
-                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                  Rayons — <span className="text-gray-700 normal-case font-semibold">{magasinCourant.nom}</span>
-                </h2>
-
-                <DndContext sensors={sensors} onDragEnd={handleRayonDragEnd}>
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50 overflow-hidden">
-                    {magasinCourant.rayons.map(rayon => (
-                      <DraggableRayonRow
-                        key={rayon.id} rayon={rayon} magasinCourant={magasinCourant}
-                        total={magasinCourant.rayons.length} renommerRayon={renommerRayon} supprimerRayon={supprimerRayon}
-                      />
-                    ))}
-                  </div>
-                </DndContext>
-
-                <form onSubmit={handleAjouterRayon} className="flex gap-2 mt-4">
-                  <input
-                    type="text" value={nouveauRayon} onChange={e => setNouveauRayon(e.target.value)}
-                    placeholder="Nom du nouveau rayon"
-                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    required
-                  />
-                  <button type="submit" className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 active:scale-95 transition-all">
-                    <Plus size={16} />Ajouter
-                  </button>
-                </form>
-              </section>
-            )}
-          </div>
-        )}
-
-      </main>
-    </div>
+    </main>
   )
 }
 

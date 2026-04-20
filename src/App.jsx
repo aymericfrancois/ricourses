@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MagasinProvider } from './context/MagasinContext'
 import { PlanningProvider } from './context/PlanningContext'
 import Header from './components/Header'
+import Blobs from './components/Blobs'
 import Home from './pages/Home'
 import Parametres from './pages/Parametres'
 import ListeCourses from './pages/ListeCourses'
@@ -12,6 +13,7 @@ import Scanner from './pages/Scanner'
 function App() {
   return (
     <BrowserRouter>
+      <Blobs />
       <MagasinProvider>
         <PlanningProvider>
           <Header />
