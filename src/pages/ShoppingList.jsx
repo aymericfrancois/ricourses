@@ -1,12 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check, Share2,
+  ShoppingCart, Package, GripVertical, Check, Share2, Eraser,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
-  useSensor, useSensors, MouseSensor, TouchSensor,
+  useSensor, useSensors, PointerSensor, TouchSensor,
 } from '@dnd-kit/core'
-import { CSS } from '@dnd-kit/utilities'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
@@ -94,18 +93,18 @@ function formatQuantite(item) {
 }
 
 // ---- Ingrédient draggable ----
+// Pas de transform sur la <li> source : c'est le DragOverlay qui suit le doigt/curseur.
+// Appliquer transform ici ET un DragOverlay créerait un décalage visuel pendant le drag.
 function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `ing:${item.nom}`,
     data: item,
   })
-  const style = { transform: CSS.Translate.toString(transform) }
 
   return (
     <li
       ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-2 px-3 py-2.5 select-none transition-all hover:bg-white/40 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+      className={`flex items-center gap-2 px-3 py-2.5 select-none transition-colors hover:bg-white/40 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
     >
       <span
         {...listeners}
@@ -174,12 +173,13 @@ function ShoppingList() {
   const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
   const { semaine, espacesLibres } = usePlanningContext()
 
-  const { checkedItems, toggleChecked } = useCoursesCoches()
+  const { checkedItems, toggleChecked, uncheckAll } = useCoursesCoches()
   const [activeItem, setActiveItem] = useState(null)
   const [toast, setToast] = useState('')
+  const [confirmUncheck, setConfirmUncheck] = useState(false)
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
   )
 
@@ -320,19 +320,50 @@ function ShoppingList() {
 
       <div className="mb-3">
         <p className="chip mb-1.5">Courses</p>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h1 className="text-3xl font-extrabold tracking-tight ink">
             Liste de courses
             {totalIngredients > 0 && <span className="ml-2 ink-4 font-normal text-base">({totalIngredients})</span>}
           </h1>
           {totalIngredients > 0 && (
-            <button
-              onClick={handleShare}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl accent-bg text-xs font-semibold hover:brightness-110 active:scale-95 transition-all shrink-0"
-            >
-              <Share2 size={13} />
-              Partager
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {checkedItems.size > 0 && (
+                confirmUncheck ? (
+                  <>
+                    <span className="text-xs ink-2">Décocher les {checkedItems.size} ?</span>
+                    <button
+                      onClick={() => { uncheckAll(); setConfirmUncheck(false) }}
+                      className="px-2.5 py-1.5 rounded-xl bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors"
+                    >
+                      Confirmer
+                    </button>
+                    <button
+                      onClick={() => setConfirmUncheck(false)}
+                      className="px-2.5 py-1.5 rounded-xl border border-white/70 bg-white/50 ink-2 text-xs hover:bg-white/80 transition-colors"
+                    >
+                      Annuler
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setConfirmUncheck(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-white/70 bg-white/60 ink-2 text-xs font-semibold hover:bg-white/80 hover:ink transition-colors"
+                    title={`Décocher tout (${checkedItems.size})`}
+                  >
+                    <Eraser size={13} />
+                    <span className="hidden sm:inline">Tout décocher</span>
+                    <span className="mono ink-3">({checkedItems.size})</span>
+                  </button>
+                )
+              )}
+              <button
+                onClick={handleShare}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl accent-bg text-xs font-semibold hover:brightness-110 active:scale-95 transition-all"
+              >
+                <Share2 size={13} />
+                Partager
+              </button>
+            </div>
           )}
         </div>
       </div>

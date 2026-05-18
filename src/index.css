@@ -104,3 +104,7 @@ body {
   filter: blur(60px); pointer-events: none;
   animation: blobFloat 18s ease-in-out infinite;
 }
+
+/* ===== UTILITIES ===== */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

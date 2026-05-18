@@ -6,6 +6,15 @@ import { useMagasinContext } from '../context/MagasinContext'
 const navLinkClass = ({ isActive }) =>
   `nav-link ${isActive ? 'active' : ''}`
 
+const NAV_ITEMS = [
+  { to: '/planning', icon: CalendarDays, label: 'Planning' },
+  { to: '/courses', icon: ShoppingCart, label: 'Courses' },
+  { to: '/scanner', icon: ScanLine, label: 'Scanner' },
+  { to: '/plats', icon: UtensilsCrossed, label: 'Plats' },
+  { to: '/rayons', icon: LayoutList, label: 'Rayons' },
+  { to: '/ingredients', icon: Leaf, label: 'Ingrédients' },
+]
+
 function Header() {
   const { magasins, magasinActif, setMagasinActif } = useMagasinContext()
   const [open, setOpen] = useState(false)
@@ -21,53 +30,39 @@ function Header() {
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 px-4 pt-4">
-      <div className="max-w-6xl mx-auto glass-strong sheen px-3 py-2.5 flex items-center gap-3 flex-wrap">
+    <header className="sticky top-0 z-30 px-2 sm:px-4 pt-2 sm:pt-4">
+      <div className="max-w-6xl mx-auto glass-strong sheen px-2 sm:px-3 py-1.5 sm:py-2.5 flex items-center gap-1.5 sm:gap-3">
 
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
           <span className="accent-bg rounded-xl w-8 h-8 flex items-center justify-center font-extrabold text-sm shadow-sm">R</span>
-          <span className="font-extrabold tracking-tight ink text-[15px]">Ricourses</span>
+          <span className="hidden sm:inline font-extrabold tracking-tight ink text-[15px]">Ricourses</span>
         </Link>
 
         {/* Navigation */}
-        <nav className="flex gap-1 flex-1 flex-wrap">
-          <NavLink to="/planning" className={navLinkClass}>
-            <CalendarDays size={15} />
-            <span>Planning</span>
-          </NavLink>
-          <NavLink to="/courses" className={navLinkClass}>
-            <ShoppingCart size={15} />
-            <span>Courses</span>
-          </NavLink>
-          <NavLink to="/scanner" className={navLinkClass}>
-            <ScanLine size={15} />
-            <span>Scanner</span>
-          </NavLink>
-          <NavLink to="/plats" className={navLinkClass}>
-            <UtensilsCrossed size={15} />
-            <span>Plats</span>
-          </NavLink>
-          <NavLink to="/rayons" className={navLinkClass}>
-            <LayoutList size={15} />
-            <span>Rayons</span>
-          </NavLink>
-          <NavLink to="/ingredients" className={navLinkClass}>
-            <Leaf size={15} />
-            <span>Ingrédients</span>
-          </NavLink>
+        <nav className="flex gap-0.5 sm:gap-1 flex-1 overflow-x-auto no-scrollbar items-center">
+          {NAV_ITEMS.map(item => {
+            const Icon = item.icon
+            return (
+              <NavLink key={item.to} to={item.to} className={navLinkClass} title={item.label}>
+                <Icon size={15} />
+                <span className="hidden md:inline">{item.label}</span>
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* Sélecteur de magasin */}
-        <div className="relative" ref={wrapRef}>
+        <div className="relative shrink-0" ref={wrapRef}>
           <button
             type="button"
             onClick={() => setOpen(o => !o)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 hover:bg-white/80 text-[13px] font-semibold ink-2 border border-white/70 transition-colors"
+            className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-white/60 hover:bg-white/80 text-[12px] sm:text-[13px] font-semibold ink-2 border border-white/70 transition-colors"
+            title={magasinActif}
           >
-            <Store size={14} className="ink-3" />
-            <span>{magasinActif}</span>
-            <ChevronDown size={14} className="ink-3" />
+            <Store size={14} className="ink-3 shrink-0" />
+            <span className="hidden sm:inline">{magasinActif}</span>
+            <ChevronDown size={14} className="ink-3 shrink-0" />
           </button>
           {open && (
             <div className="absolute right-0 mt-2 min-w-[180px] glass-strong sheen p-1.5 anim-pop z-40">

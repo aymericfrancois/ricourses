@@ -20,19 +20,22 @@ function Home() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-        {TILES.map(({ to, icon: Icon, label, desc }) => (
-          <Link
-            key={to}
-            to={to}
-            className="glass sheen p-5 flex flex-col gap-2 transition-transform hover:-translate-y-0.5"
-          >
-            <span className="accent-soft-bg rounded-xl w-10 h-10 flex items-center justify-center">
-              <Icon size={20} className="accent-text" />
-            </span>
-            <p className="font-bold ink text-[15px] mt-1">{label}</p>
-            <p className="ink-3 text-xs leading-snug">{desc}</p>
-          </Link>
-        ))}
+        {TILES.map(tile => {
+          const Icon = tile.icon
+          return (
+            <Link
+              key={tile.to}
+              to={tile.to}
+              className="glass sheen p-5 flex flex-col gap-2 transition-transform hover:-translate-y-0.5"
+            >
+              <span className="accent-soft-bg rounded-xl w-10 h-10 flex items-center justify-center">
+                <Icon size={20} className="accent-text" />
+              </span>
+              <p className="font-bold ink text-[15px] mt-1">{tile.label}</p>
+              <p className="ink-3 text-xs leading-snug">{tile.desc}</p>
+            </Link>
+          )
+        })}
       </div>
     </main>
   )
