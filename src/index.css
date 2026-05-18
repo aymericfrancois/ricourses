@@ -105,6 +105,18 @@ body {
   animation: blobFloat 18s ease-in-out infinite;
 }
 
+/* ===== POPOVER (dropdowns) =====
+   Pas de backdrop-filter : nesté dans des .glass-*, le filtre composite
+   se casse sur certains moteurs et laisse voir au travers. */
+.popover {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    0 14px 38px -10px rgba(30,30,80,0.28),
+    0 4px 12px -4px rgba(30,30,80,0.14);
+  border-radius: var(--radius-sm);
+}
+
 /* ===== UTILITIES ===== */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }

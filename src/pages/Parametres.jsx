@@ -459,7 +459,7 @@ function Parametres() {
   const [editPlatNomValue, setEditPlatNomValue] = useState('')
   const editPlatNomSubmittedRef = useRef(false)
   const [editIngId, setEditIngId] = useState(null)
-  const [editIngValues, setEditIngValues] = useState({ quantite: '', unite: 'g' })
+  const [editIngValues, setEditIngValues] = useState({ quantite: '', unite: 'pièce' })
 
   // --- État onglet Ingrédients ---
   const [searchIngredients, setSearchIngredients] = useState('')
@@ -492,7 +492,7 @@ function Parametres() {
   }
 
   function getIngredientForm(platId) {
-    return ingredientForms[platId] ?? { nom: '', quantite: '', unite: 'g' }
+    return ingredientForms[platId] ?? { nom: '', quantite: '', unite: 'pièce' }
   }
 
   function setIngredientField(platId, field, value) {
@@ -508,7 +508,7 @@ function Parametres() {
     ajouterIngredient(platId, form)
     setIngredientForms(prev => ({
       ...prev,
-      [platId]: { nom: '', quantite: '', unite: 'g' },
+      [platId]: { nom: '', quantite: '', unite: 'pièce' },
     }))
   }
 
@@ -884,7 +884,7 @@ function Parametres() {
             {/* Modale de fusion */}
             {showMergeModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 anim-pop">
-                <div className="glass-strong sheen w-full max-w-sm p-6 flex flex-col gap-4">
+                <div className="popover w-full max-w-sm p-6 flex flex-col gap-4">
                   <h2 className="text-base font-bold ink flex items-center gap-2">
                     <GitMerge size={18} className="accent-text" />
                     Fusionner des ingrédients

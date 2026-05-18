@@ -65,7 +65,7 @@ function Header() {
             <ChevronDown size={14} className="ink-3 shrink-0" />
           </button>
           {open && (
-            <div className="absolute right-0 mt-2 min-w-[180px] glass-strong sheen p-1.5 anim-pop z-40">
+            <div className="absolute right-0 mt-2 min-w-[180px] popover p-1.5 anim-pop z-40">
               {magasins.map(m => {
                 const actif = m.nom === magasinActif
                 return (

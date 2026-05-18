@@ -56,7 +56,7 @@ function PlatCombobox({ value, onChange, plats, onCreatePlat }) {
         </button>
       )}
       {open && filtered.length > 0 && (
-        <ul className="absolute z-30 top-full left-0 right-0 glass-strong sheen max-h-48 overflow-y-auto mt-1 p-1 anim-pop">
+        <ul className="absolute z-30 top-full left-0 right-0 popover max-h-48 overflow-y-auto mt-1 p-1 anim-pop">
           {filtered.map(p => (
             <li
               key={p.id}
@@ -69,7 +69,7 @@ function PlatCombobox({ value, onChange, plats, onCreatePlat }) {
         </ul>
       )}
       {open && filtered.length === 0 && query.trim() && (
-        <div className="absolute z-30 top-full left-0 right-0 glass-strong sheen mt-1 p-1 anim-pop">
+        <div className="absolute z-30 top-full left-0 right-0 popover mt-1 p-1 anim-pop">
           <button
             onMouseDown={e => {
               e.preventDefault()
@@ -114,7 +114,7 @@ function IngredientCombobox({ value, onChange, suggestions, placeholder = 'Ingr�
         required
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-30 top-full left-0 right-0 glass-strong sheen max-h-40 overflow-y-auto mt-1 p-1 anim-pop">
+        <ul className="absolute z-30 top-full left-0 right-0 popover max-h-40 overflow-y-auto mt-1 p-1 anim-pop">
           {filtered.map(nom => (
             <li
               key={nom}
@@ -132,12 +132,12 @@ function IngredientCombobox({ value, onChange, suggestions, placeholder = 'Ingr�
 
 // ---- Mini-gestionnaire d'ingrédients par repas ----
 function RepasEditor({ plat, delta, onToggleExclu, onSetOverride, onAddExtra, onRemoveExtra, suggestions }) {
-  const [formExtra, setFormExtra] = useState({ nom: '', quantite: '', unite: 'g' })
+  const [formExtra, setFormExtra] = useState({ nom: '', quantite: '', unite: 'pièce' })
 
   function handleAddExtra(e) {
     e.preventDefault()
     onAddExtra(formExtra)
-    setFormExtra({ nom: '', quantite: '', unite: 'g' })
+    setFormExtra({ nom: '', quantite: '', unite: 'pièce' })
   }
 
   return (
@@ -254,9 +254,9 @@ function Planning() {
   const [openSlots, setOpenSlots] = useState({})
 
   const [formsLibres, setFormsLibres] = useState({
-    petitDejeuner: { nom: '', quantite: '', unite: 'g', platId: null },
-    achatsPonctuels: { nom: '', quantite: '', unite: 'g', platId: null },
-    alicya: { nom: '', quantite: '', unite: 'g', platId: null },
+    petitDejeuner: { nom: '', quantite: '', unite: 'pièce', platId: null },
+    achatsPonctuels: { nom: '', quantite: '', unite: 'pièce', platId: null },
+    alicya: { nom: '', quantite: '', unite: 'pièce', platId: null },
   })
 
   const ingredientSuggestions = useMemo(() => {
@@ -288,7 +288,7 @@ function Planning() {
   function handleAjouterLibre(e, bloc) {
     e.preventDefault()
     ajouterIngredientLibre(bloc, formsLibres[bloc])
-    setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'g', platId: null } }))
+    setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'pièce', platId: null } }))
   }
 
   function handleReset() {

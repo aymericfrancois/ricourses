@@ -259,7 +259,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
         placeholder="Chercher un ingrédient…"
         className="w-full rounded-lg border border-[color:var(--accent)]/40 bg-white/80 px-2 py-1 text-xs ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
       />
-      <ul className="absolute z-40 top-full left-0 right-0 mt-1 glass-strong sheen max-h-40 overflow-y-auto p-1 anim-pop">
+      <ul className="absolute z-40 top-full left-0 right-0 mt-1 popover max-h-40 overflow-y-auto p-1 anim-pop">
         {currentMatch && (
           <li
             onMouseDown={e => { e.preventDefault(); onSelect(null); setOpen(false) }}
