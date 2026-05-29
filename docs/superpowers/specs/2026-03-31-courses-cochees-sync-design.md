@@ -27,6 +27,18 @@ CREATE POLICY "public access" ON courses_cochees FOR ALL USING (true) WITH CHECK
 - Pas de FK, couvre aussi les ingrédients orphelins (sans rayon)
 - Pas de colonne `magasin_id` — l'état coché est global, indépendant du store sélectionné
 
+> **⚠️ À partir du 30 oct 2026** : Supabase n'expose plus automatiquement les nouvelles tables de `public` à la Data API. Tout `CREATE TABLE` doit désormais être suivi de `GRANT` explicites pour rester accessible via `supabase-js`. Pattern complet pour toute future table :
+>
+> ```sql
+> CREATE TABLE ma_table ( /* ... */ );
+> ALTER TABLE ma_table ENABLE ROW LEVEL SECURITY;
+> CREATE POLICY "public access" ON ma_table FOR ALL USING (true) WITH CHECK (true);
+> GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ma_table TO anon, authenticated;
+> GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+> ```
+>
+> Les 16 tables existantes (dont `courses_cochees`) restent exposées après cette date — la règle ne s'applique qu'aux nouvelles.
+
 ---
 
 ## Architecture
