@@ -39,6 +39,14 @@ CREATE POLICY "public access" ON courses_cochees FOR ALL USING (true) WITH CHECK
 >
 > Les 16 tables existantes (dont `courses_cochees`) restent exposées après cette date — la règle ne s'applique qu'aux nouvelles.
 
+> **⚠️ Depuis 2026-05-30 (auth Supabase activée)** : les policies sont scopées `TO authenticated` et non plus permissives. Pattern à reprendre pour toute future table :
+>
+> ```sql
+> CREATE POLICY "authenticated access" ON ma_table FOR ALL TO authenticated USING (true) WITH CHECK (true);
+> ```
+>
+> Le rôle `anon` n'a aucun accès direct — seuls les utilisateurs logés via `supabase.auth.signInWithPassword(...)` peuvent CRUD.
+
 ---
 
 ## Architecture

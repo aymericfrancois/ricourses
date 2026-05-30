@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf, ShoppingCart, Store, Check, ChevronDown } from 'lucide-react'
+import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf, ShoppingCart, Store, Check, ChevronDown, LogOut } from 'lucide-react'
 import { useMagasinContext } from '../context/MagasinContext'
+import { supabase } from '../supabaseClient'
 
 const navLinkClass = ({ isActive }) =>
   `nav-link ${isActive ? 'active' : ''}`
@@ -65,7 +66,8 @@ function Header() {
             <ChevronDown size={14} className="ink-3 shrink-0" />
           </button>
           {open && (
-            <div className="absolute right-0 mt-2 min-w-[180px] popover p-1.5 anim-pop z-40">
+            <div className="absolute right-0 mt-2 min-w-[200px] popover p-1.5 anim-pop z-40">
+              <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
               {magasins.map(m => {
                 const actif = m.nom === magasinActif
                 return (
@@ -82,6 +84,15 @@ function Header() {
                   </button>
                 )
               })}
+              <div className="border-t border-black/5 my-1.5" />
+              <button
+                type="button"
+                onClick={() => { setOpen(false); supabase.auth.signOut() }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-semibold ink-2 hover:bg-red-50 hover:text-red-600 transition-colors"
+              >
+                <LogOut size={14} />
+                <span>Se déconnecter</span>
+              </button>
             </div>
           )}
         </div>
