@@ -4,7 +4,7 @@ This file provides guidance for AI assistants working in this codebase.
 
 ## Règles de travail
 
-- **Toujours travailler sur `main` directement.** Ne jamais créer de branche feature. Commit et push sur `main` — le déploiement en production est automatique via GitHub Actions.
+- **Toujours travailler sur `main` directement.** Ne jamais créer de branche feature. Commit et push sur `main` — le déploiement en production est automatique via Vercel.
 
 ---
 
@@ -12,7 +12,7 @@ This file provides guidance for AI assistants working in this codebase.
 
 **Ricourses** is a French-language meal planning, grocery list, and household expense splitting web app. Users plan their week (assign meals per day, add free ingredients), the app auto-generates a shopping list grouped by store section, and a Scanner page reads receipts to split expenses via a Tricount-style calculator. All state is persisted in `localStorage`; there is no backend.
 
-**Live app:** Deployed to GitHub Pages at `/ricourses/`
+**Live app:** Déployé sur Vercel (auto-deploy sur push `main`). Un `vercel.json` à la racine configure le SPA rewrite (`/* → /index.html`).
 
 ---
 
@@ -27,7 +27,7 @@ This file provides guidance for AI assistants working in this codebase.
 | Drag & Drop | @dnd-kit/core + @dnd-kit/utilities |
 | Build | Vite 7.3 |
 | Linting | ESLint 9 (flat config) |
-| Deploy | GitHub Actions → GitHub Pages |
+| Deploy | Vercel (auto sur push `main`) |
 
 ---
 
@@ -334,18 +334,21 @@ Read-only (not in main nav). Aggregates all 38+ meals' ingredients regardless of
 
 ## Deployment
 
-Auto-deployed on push to `main` via `.github/workflows/deploy.yml`:
-1. Checkout → Node 20 → `npm ci` → `npm run build` (in `ricourses/` subdirectory)
-2. Upload `./ricourses/dist` as GitHub Pages artifact
-3. Deploy to GitHub Pages environment
+Auto-déployé sur **Vercel** à chaque push sur `main`. Aucune config manuelle requise.
 
-`vite.config.js` sets `base: '/ricourses/'`. Do not change this.
+- `vercel.json` à la racine configure le rewrite SPA : toutes les routes → `index.html`
+- `vite.config.js` n'a pas de `base` (l'app est servie à la racine `/`)
+- Un workflow GitHub Actions `deploy.yml` existe aussi mais Vercel est le déploiement actif
+
+### Variables d'environnement (à configurer dans le dashboard Vercel)
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
 ---
 
 ## Workflow Git
 
-Travaille toujours directement sur la branche `main`. Ne crée pas de branches ni de worktrees. Commit et push directement sur `main`.
+Travaille toujours directement sur la branche `main`. Ne crée jamais de branches ni de worktrees. Commit et push directement sur `main` — Vercel déploie automatiquement.
 
 ---
 
