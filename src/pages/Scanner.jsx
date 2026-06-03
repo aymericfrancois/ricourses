@@ -683,8 +683,10 @@ function Scanner() {
       </main>
 
       {/* Panneau Tricount fixe */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4">
-        <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4">
+      <div className="fixed bottom-0 left-0 right-0 z-30">
+        <div className="h-14 bg-gradient-to-b from-transparent to-white/80 pointer-events-none" />
+        <div className="px-4 pb-4">
+        <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4" style={{ background: 'rgba(255,255,255,0.96)' }}>
           <div className="flex items-stretch gap-4">
             <div className="flex-1">
               <p className="text-[10px] font-bold ink-3 uppercase tracking-widest mb-0.5">Total ticket</p>
@@ -704,6 +706,7 @@ function Scanner() {
               <p className="text-[10px] text-pink-400 mt-0.5">{nbAli} solo + {nbBoth} partagés</p>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
