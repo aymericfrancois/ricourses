@@ -30,26 +30,44 @@ const MOTS_CLES_IGNORER = [
   'nombre de lignes', 'a payer', 'eligible',
 ]
 
-// Extrait quantite + unite depuis une ligne de ticket.
+// Normalise un token d'unité OCR (insensible casse/accents) vers nos unités canoniques.
+function normUnite(u) {
+  const x = u.toLowerCase().replace('×', 'x')
+  if (x === 'kg' || x === 'kgs') return 'kg'
+  if (x === 'g' || x === 'gr' || x === 'grs' || x === 'gramme' || x === 'grammes') return 'g'
+  if (x === 'l' || x === 'litre' || x === 'litres') return 'L'
+  if (x === 'cl') return 'cL'
+  if (x === 'ml') return 'mL'
+  return null
+}
+
+// Extrait quantite + unite depuis une ligne de ticket (nom inclus).
+// Gère les entiers collés ("850G", "1KG", "20CL"), décimales ("0,540 KG"),
+// packs ("X8", "6X1,5L") et multiplicateurs.
+// Une ligne de TAUX ("2,99 €/kg") n'est PAS une quantité → renvoie null (le "€/"
+// brise la contiguïté nombre↔unité, donc le Pattern A ci-dessous ne matche pas).
+// Pour un article pesé ("0,650 kg x 2,99 €/kg") c'est le vrai poids qui est capté.
 // Retourne { quantite, unite } ou null.
 function extraireQtyUnite(ligne) {
-  // Pattern A : prix au poids "2,99 €/kg", "3,50€/100g"
-  const reA = /(\d+[,.]\d*)\s*€?\s*\/\s*(100g|kg|g|L|cL|mL)/i
-  const mA = ligne.match(reA)
+  // Pattern A : poids/volume absolu — "850G", "0,540 KG", "20 CL", "1L"
+  // Nombre directement suivi (espace optionnel) d'une unité. Décimale optionnelle.
+  const mA = ligne.match(/(\d+(?:[,.]\d+)?)\s*(kgs?|grammes?|grs?|g|litres?|cl|ml|l)\b/i)
   if (mA) {
-    if (mA[2].toLowerCase() === '100g') return { quantite: 100, unite: 'g' }
-    return { quantite: parseFloat(mA[1].replace(',', '.')), unite: mA[2] }
+    const u = normUnite(mA[2])
+    if (u) return { quantite: parseFloat(mA[1].replace(',', '.')), unite: u }
   }
-  // Pattern B : poids en fin de ligne "0,540 KG", "500 G", "20 CL"
-  const reB = /(\d+[,.]\d+)\s*(kg|g|L|cL|mL)\b/i
-  const mB = ligne.match(reB)
+
+  // Pattern B : pack de pièces — "X8", "x 6", "LOT DE 4"
+  const mB = ligne.match(/\b(?:x\s*(\d{1,2})|lot de\s*(\d{1,2})|(\d{1,2})\s*x)\b/i)
   if (mB) {
-    return { quantite: parseFloat(mB[1].replace(',', '.')), unite: mB[2].toLowerCase() === 'kg' ? 'kg' : mB[2].toLowerCase() === 'g' ? 'g' : mB[2].toLowerCase() === 'l' ? 'L' : mB[2].toLowerCase() === 'cl' ? 'cL' : 'mL' }
+    const n = parseInt(mB[1] || mB[2] || mB[3], 10)
+    if (n >= 2 && n <= 48) return { quantite: n, unite: 'pièce' }
   }
-  // Pattern C : multiplicateur "2 X 1,50" → quantite=2, unite='pièce'
-  const reC = /^\s*(\d+)\s*[xXàÀ*]/
-  const mC = ligne.match(reC)
+
+  // Pattern C : multiplicateur en début de ligne — "2 X 1,50" → 2 pièces
+  const mC = ligne.match(/^\s*(\d+)\s*[xXàÀ*]/)
   if (mC) return { quantite: parseInt(mC[1], 10), unite: 'pièce' }
+
   return null
 }
 
