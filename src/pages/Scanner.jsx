@@ -97,6 +97,19 @@ function parserTicket(texte) {
     const normLigne = normaliser(trimmed)
     if (MOTS_CLES_IGNORER.some(kw => normLigne.includes(kw))) continue
 
+    // Ligne de pesée "0,038 kg x 2,79 EUR/kg" → patch l'article précédent avec le vrai poids
+    if (articles.length > 0) {
+      const mPesee = trimmed.match(/(\d+[,.]\d+)\s*(kg|g|l|cl|ml)\s*[x×*]\s*[\d,.].*(?:eur|€|\/)/i)
+      if (mPesee) {
+        const lastArticle = articles[articles.length - 1]
+        if (lastArticle.quantite == null) {
+          lastArticle.quantite = parseFloat(mPesee[1].replace(',', '.'))
+          lastArticle.unite = normUnite(mPesee[2])
+        }
+        continue
+      }
+    }
+
     const allPrices = [...trimmed.matchAll(/(-?\d{1,4}[,.]\d{2})/g)]
     const hasPrice = allPrices.length > 0
 
@@ -131,7 +144,7 @@ function parserTicket(texte) {
       if (segments.length >= 2) {
         for (const seg of segments) {
           console.log('LIGNE LUE (MULTI) :', raw, '--> SEGMENT AJOUTÉ :', seg.name, seg.price)
-          const qtyInfo = extraireQtyUnite(raw)
+          const qtyInfo = extraireQtyUnite(seg.name) ?? extraireQtyUnite(raw)
           articles.push({
             id: crypto.randomUUID(),
             nom: seg.name.toUpperCase(),
@@ -180,7 +193,10 @@ function parserTicket(texte) {
     if (!/[a-zA-ZÀ-ÿ]{3}/.test(cleanedName)) continue
     if (!/[aeiouAEIOUàâäéèêëîïôöùûüÀÂÄÉÈÊËÎÏÔÖÙÛÜ]/.test(cleanedName)) continue
 
-    const qtyInfo = extraireQtyUnite(raw)
+    // cleanedName = portion article avant le prix (ex: "Skyr nature 850g").
+    // raw inclut les colonnes du ticket (P.U.EUR, Qté, EUR) qui peuvent parasiter.
+    // On cherche d'abord dans cleanedName, fallback sur raw.
+    const qtyInfo = extraireQtyUnite(cleanedName) ?? extraireQtyUnite(raw)
     articles.push({
       id: crypto.randomUUID(),
       nom: cleanedName.toUpperCase(),
