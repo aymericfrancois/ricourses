@@ -30,6 +30,29 @@ const MOTS_CLES_IGNORER = [
   'nombre de lignes', 'a payer', 'eligible',
 ]
 
+// Extrait quantite + unite depuis une ligne de ticket.
+// Retourne { quantite, unite } ou null.
+function extraireQtyUnite(ligne) {
+  // Pattern A : prix au poids "2,99 €/kg", "3,50€/100g"
+  const reA = /(\d+[,.]\d*)\s*€?\s*\/\s*(100g|kg|g|L|cL|mL)/i
+  const mA = ligne.match(reA)
+  if (mA) {
+    if (mA[2].toLowerCase() === '100g') return { quantite: 100, unite: 'g' }
+    return { quantite: parseFloat(mA[1].replace(',', '.')), unite: mA[2] }
+  }
+  // Pattern B : poids en fin de ligne "0,540 KG", "500 G", "20 CL"
+  const reB = /(\d+[,.]\d+)\s*(kg|g|L|cL|mL)\b/i
+  const mB = ligne.match(reB)
+  if (mB) {
+    return { quantite: parseFloat(mB[1].replace(',', '.')), unite: mB[2].toLowerCase() === 'kg' ? 'kg' : mB[2].toLowerCase() === 'g' ? 'g' : mB[2].toLowerCase() === 'l' ? 'L' : mB[2].toLowerCase() === 'cl' ? 'cL' : 'mL' }
+  }
+  // Pattern C : multiplicateur "2 X 1,50" → quantite=2, unite='pièce'
+  const reC = /^\s*(\d+)\s*[xXàÀ*]/
+  const mC = ligne.match(reC)
+  if (mC) return { quantite: parseInt(mC[1], 10), unite: 'pièce' }
+  return null
+}
+
 function parserTicket(texte) {
   const lines = texte.split('\n')
   const articles = []
@@ -90,10 +113,14 @@ function parserTicket(texte) {
       if (segments.length >= 2) {
         for (const seg of segments) {
           console.log('LIGNE LUE (MULTI) :', raw, '--> SEGMENT AJOUTÉ :', seg.name, seg.price)
+          const qtyInfo = extraireQtyUnite(raw)
           articles.push({
             id: crypto.randomUUID(),
             nom: seg.name.toUpperCase(),
             prix: seg.price,
+            prixBase: seg.price,
+            quantite: qtyInfo?.quantite ?? null,
+            unite: qtyInfo?.unite ?? null,
             matchedNom: null,
             receiptCategory: currentCategory,
             ignored: false,
@@ -135,10 +162,14 @@ function parserTicket(texte) {
     if (!/[a-zA-ZÀ-ÿ]{3}/.test(cleanedName)) continue
     if (!/[aeiouAEIOUàâäéèêëîïôöùûüÀÂÄÉÈÊËÎÏÔÖÙÛÜ]/.test(cleanedName)) continue
 
+    const qtyInfo = extraireQtyUnite(raw)
     articles.push({
       id: crypto.randomUUID(),
       nom: cleanedName.toUpperCase(),
       prix,
+      prixBase: prix,
+      quantite: qtyInfo?.quantite ?? null,
+      unite: qtyInfo?.unite ?? null,
       matchedNom: null,
       receiptCategory: currentCategory,
       ignored: false,
@@ -318,7 +349,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, enregistrerPrix, getDernierePrixObs } = useMagasinContext()
   const { plats } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -331,6 +362,8 @@ function Scanner() {
   const [ocrStatus, setOcrStatus] = useState('')
   const [validating, setValidating] = useState(false)
   const [validated, setValidated] = useState(false)
+  // { [articleId]: { quantite: string, unite: string } }
+  const [articleQtyUnite, setArticleQtyUnite] = useState({})
 
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -375,15 +408,26 @@ function Scanner() {
         matchedNom: trouverCorrespondance(a.nom, ingredientNames, getOcrAlias),
       }))
 
-      const initial = {}
+      const initialSplits = {}
+      const initialQtyUnite = {}
       extracted.forEach(a => {
-        initial[a.id] = a.matchedNom
+        initialSplits[a.id] = a.matchedNom
           ? (getHistoriqueSplits(a.matchedNom) ?? getSplit(a.matchedNom))
           : 'both'
+        // Pré-remplir qty/unite depuis l'article parsé ou dernière obs connue
+        if (a.quantite != null) {
+          initialQtyUnite[a.id] = { quantite: String(a.quantite), unite: a.unite ?? '' }
+        } else if (a.matchedNom) {
+          const obs = getDernierePrixObs(magasinActif, a.matchedNom)
+          if (obs?.quantite != null) {
+            initialQtyUnite[a.id] = { quantite: String(obs.quantite), unite: obs.unite ?? '' }
+          }
+        }
       })
 
       setArticles(extracted)
-      setArticleSplits(initial)
+      setArticleSplits(initialSplits)
+      setArticleQtyUnite(initialQtyUnite)
       setStep(extracted.length > 0 ? 'resultat' : 'erreur')
     } catch (err) {
       console.error('Erreur OCR :', err)
@@ -401,14 +445,29 @@ function Scanner() {
     setOcrStatus('')
     setValidated(false)
     setValidating(false)
+    setArticleQtyUnite({})
   }
 
   async function handleValider() {
     setValidating(true)
-    const entries = articlesActifs
-      .filter(a => a.matchedNom)
-      .map(a => ({ ingredient_nom: a.matchedNom, split_choisi: articleSplits[a.id] ?? 'both' }))
-    await enregistrerHistorique(entries)
+    const matched = articlesActifs.filter(a => a.matchedNom)
+
+    const histEntries = matched.map(a => ({ ingredient_nom: a.matchedNom, split_choisi: articleSplits[a.id] ?? 'both' }))
+    const prixEntries = matched.map(a => {
+      const qtyUnite = articleQtyUnite[a.id]
+      return {
+        ingredient_nom: a.matchedNom,
+        prix: a.prix,
+        prixBase: a.prixBase ?? a.prix,
+        quantite: qtyUnite?.quantite ? parseFloat(qtyUnite.quantite) : null,
+        unite: qtyUnite?.unite || null,
+      }
+    })
+
+    await Promise.all([
+      enregistrerHistorique(histEntries),
+      enregistrerPrix(prixEntries),
+    ])
     setValidating(false)
     setValidated(true)
     setTimeout(() => setValidated(false), 2500)
@@ -654,6 +713,34 @@ function Scanner() {
                         setOcrAlias(article.nom, nom)
                       }}
                     />
+                  )}
+                  {!article.ignored && article.matchedNom && (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder="Qté"
+                        value={articleQtyUnite[article.id]?.quantite ?? ''}
+                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], quantite: e.target.value, unite: prev[article.id]?.unite ?? '' } }))}
+                        className="w-16 rounded-lg border border-white/70 bg-white/60 px-2 py-0.5 text-xs ink text-center focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+                      />
+                      <select
+                        value={articleQtyUnite[article.id]?.unite ?? ''}
+                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], unite: e.target.value, quantite: prev[article.id]?.quantite ?? '' } }))}
+                        className="rounded-lg border border-white/70 bg-white/60 px-1.5 py-0.5 text-xs ink focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+                      >
+                        <option value="">unité</option>
+                        <option value="g">g</option>
+                        <option value="kg">kg</option>
+                        <option value="mL">mL</option>
+                        <option value="cL">cL</option>
+                        <option value="L">L</option>
+                        <option value="pièce">pièce</option>
+                        <option value="c.à.s">c.à.s</option>
+                        <option value="c.à.c">c.à.c</option>
+                      </select>
+                    </div>
                   )}
                 </div>
 

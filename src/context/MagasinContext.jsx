@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 import { useMagasins } from '../hooks/useMagasins'
 import mappingRayons from '../data/mappingRayons.json'
 import { supabase } from '../supabaseClient'
+import { prixNormalise } from '../utils/prix'
 
 const STORAGE_KEY_ACTIF = 'ricourses_magasin_actif'
 const STORAGE_KEY_RAYONS = 'ricourses_rayons_par_magasin'
@@ -113,6 +114,9 @@ export function MagasinProvider({ children }) {
 
   // { [ingredient_nom_lowercase]: [{split, created_at}, ...] } trié du + récent au + ancien
   const [scannerHistorique, setScannerHistorique] = useState({})
+
+  // { [magasin_nom]: { [ingredient_nom_lowercase]: [obs, ...] } } trié created_at DESC
+  const [prixObservations, setPrixObservations] = useState({})
 
   // ---- Persist localStorage ----
   useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif) }, [magasinActif])
@@ -294,6 +298,91 @@ export function MagasinProvider({ children }) {
     if (error) console.error('enregistrerHistorique:', error)
   }
 
+  // ---- Fetch Supabase : prix_observations ----
+  useEffect(() => {
+    async function fetchPrix() {
+      const { data, error } = await supabase
+        .from('prix_observations')
+        .select('magasin_id, ingredient_nom, prix, quantite, unite, prix_normalise, famille, created_at, magasins!magasin_id(nom)')
+        .order('created_at', { ascending: false })
+
+      if (error) { console.error('fetchPrix:', error); return }
+      if (!data || data.length === 0) return
+
+      const index = {}
+      for (const row of data) {
+        const magasinNom = row.magasins?.nom
+        if (!magasinNom) continue
+        const key = row.ingredient_nom.toLowerCase()
+        if (!index[magasinNom]) index[magasinNom] = {}
+        if (!index[magasinNom][key]) index[magasinNom][key] = []
+        index[magasinNom][key].push({
+          prix: row.prix,
+          quantite: row.quantite,
+          unite: row.unite,
+          prix_normalise: row.prix_normalise,
+          famille: row.famille,
+          created_at: row.created_at,
+        })
+      }
+      setPrixObservations(index)
+    }
+    fetchPrix()
+  }, [])
+
+  // ---- Accesseurs prix ----
+  function getDernierePrixObs(magasinNom, ingredientNom) {
+    if (!magasinNom || !ingredientNom) return null
+    const obs = prixObservations[magasinNom]?.[ingredientNom.toLowerCase()]
+    return obs?.[0] ?? null
+  }
+
+  function getHistoriquePrix(magasinNom, ingredientNom) {
+    if (!magasinNom || !ingredientNom) return []
+    return prixObservations[magasinNom]?.[ingredientNom.toLowerCase()] ?? []
+  }
+
+  async function enregistrerPrix(observations) {
+    const magasin = magasins.find(m => m.nom === magasinActif)
+    if (!magasin || !UUID_REGEX.test(magasin.id)) return
+
+    const now = new Date().toISOString()
+    const rows = observations
+      .filter(o => o.ingredient_nom && o.prix != null)
+      .map(o => {
+        const norm = prixNormalise(o.prixBase ?? o.prix, o.quantite, o.unite)
+        return {
+          magasin_id: magasin.id,
+          ingredient_nom: o.ingredient_nom.toLowerCase(),
+          prix: o.prixBase ?? o.prix,
+          quantite: o.quantite ?? null,
+          unite: o.unite ?? null,
+          prix_normalise: norm?.prixNorm ?? null,
+          famille: norm?.famille ?? null,
+          source: 'scanner',
+        }
+      })
+
+    if (rows.length === 0) return
+
+    // Mise à jour optimiste
+    setPrixObservations(prev => {
+      const next = { ...prev }
+      if (!next[magasinActif]) next[magasinActif] = {}
+      const store = { ...next[magasinActif] }
+      for (const row of rows) {
+        const key = row.ingredient_nom
+        const obs = { prix: row.prix, quantite: row.quantite, unite: row.unite, prix_normalise: row.prix_normalise, famille: row.famille, created_at: now }
+        store[key] = [obs, ...(store[key] ?? [])]
+      }
+      next[magasinActif] = store
+      return next
+    })
+
+    const { error } = await supabase.from('prix_observations').insert(rows)
+    if (error) console.error('enregistrerPrix:', error)
+  }
+
   // ---- Magasin actif ----
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
@@ -437,6 +526,7 @@ export function MagasinProvider({ children }) {
       standaloneIngredients, ajouterIngredientStandalone,
       getSplit, setSplit, getHistoriqueSplits, enregistrerHistorique,
       ocrAliases, getOcrAlias, setOcrAlias,
+      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix,
     }}>
       {children}
     </MagasinContext.Provider>

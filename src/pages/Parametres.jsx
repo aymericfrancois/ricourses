@@ -14,6 +14,7 @@ import {
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
+import { formatPrixNorm, UNITE_BASE_NOM } from '../utils/prix'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
 
@@ -431,13 +432,14 @@ function Parametres() {
     magasinActif, setMagasinActif, getRayon, setRayon,
     renommerIngredientDansRayons, supprimerIngredientDansRayons,
     standaloneIngredients, ajouterIngredientStandalone,
-    setSplit,
+    setSplit, prixObservations,
   } = useMagasinContext()
   const { espacesLibres } = usePlanningContext()
 
   const { pathname } = useLocation()
   const activeTab = pathname.endsWith('/rayons') ? 'rayons'
     : pathname.endsWith('/ingredients') ? 'ingredients'
+    : pathname.endsWith('/prix') ? 'prix'
     : 'plats'
 
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
@@ -1132,6 +1134,79 @@ function Parametres() {
           )}
         </div>
       )}
+
+      {/* ===== ONGLET PRIX ===== */}
+      {activeTab === 'prix' && (() => {
+        // Collecter tous les ingrédients ayant au moins 1 obs dans n'importe quel magasin
+        const ingredientsAvecPrix = new Set()
+        for (const obsParMag of Object.values(prixObservations)) {
+          for (const nom of Object.keys(obsParMag)) ingredientsAvecPrix.add(nom)
+        }
+        const sorted = [...ingredientsAvecPrix].sort((a, b) => a.localeCompare(b, 'fr'))
+
+        if (sorted.length === 0) {
+          return (
+            <div className="text-center py-16">
+              <p className="text-sm ink-3">Aucun prix enregistré pour l'instant.</p>
+              <p className="text-xs ink-4 mt-1">Scannez des tickets pour commencer à comparer les prix.</p>
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-3">
+            <p className="text-xs ink-3">{sorted.length} ingrédient{sorted.length > 1 ? 's' : ''} avec historique de prix</p>
+            <div className="glass divide-y divide-white/40 overflow-hidden">
+              {sorted.map(nom => {
+                const magasinsPrix = magasins
+                  .map(m => {
+                    const obs = prixObservations[m.nom]?.[nom]
+                    const derniere = obs?.[0] ?? null
+                    return { magasin: m.nom, obs: derniere, historique: obs ?? [] }
+                  })
+                  .filter(e => e.obs !== null)
+
+                // Trouver le moins cher (par prix_normalise si dispo, sinon prix brut)
+                const avecNorm = magasinsPrix.filter(e => e.obs.prix_normalise != null)
+                let moinsCher = null
+                if (avecNorm.length >= 2) {
+                  moinsCher = avecNorm.reduce((min, e) => e.obs.prix_normalise < min.obs.prix_normalise ? e : min).magasin
+                }
+
+                return (
+                  <div key={nom} className="px-4 py-3">
+                    <p className="text-sm font-semibold ink capitalize mb-2">{nom}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {magasinsPrix.map(({ magasin, obs, historique }) => {
+                        const prixAff = obs.prix_normalise != null
+                          ? formatPrixNorm(obs.prix_normalise, UNITE_BASE_NOM[obs.famille] ?? 'u')
+                          : `${Number(obs.prix).toFixed(2)} € (brut)`
+                        const isCheap = magasin === moinsCher
+                        // Variation si ≥2 obs normalisées
+                        let variation = null
+                        const normHist = historique.filter(o => o.prix_normalise != null)
+                        if (normHist.length >= 2) {
+                          const diff = normHist[0].prix_normalise - normHist[1].prix_normalise
+                          const pct = Math.round((diff / normHist[1].prix_normalise) * 100)
+                          if (pct !== 0) variation = { pct, up: pct > 0 }
+                        }
+                        const date = new Date(obs.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+                        return (
+                          <div key={magasin} className={`flex flex-col gap-0.5 rounded-xl px-3 py-2 border text-xs ${isCheap ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-white/60 border-white/70 ink-2'}`}>
+                            <span className="font-bold text-[11px] ink-3">{magasin}</span>
+                            <span className={`font-extrabold text-sm ${isCheap ? 'text-green-700' : 'ink'}`}>{prixAff}</span>
+                            <span className="text-[10px] ink-4">{date}{variation && <span className={variation.up ? ' text-red-500' : ' text-green-600'}> {variation.up ? '↑' : '↓'}{Math.abs(variation.pct)}%</span>}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
     </main>
   )

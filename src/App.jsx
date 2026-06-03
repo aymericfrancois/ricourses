@@ -50,6 +50,7 @@ function App() {
             <Route path="/plats" element={<Parametres />} />
             <Route path="/rayons" element={<Parametres />} />
             <Route path="/ingredients" element={<Parametres />} />
+            <Route path="/prix" element={<Parametres />} />
             <Route path="/scanner" element={<Scanner />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
