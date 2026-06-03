@@ -337,6 +337,12 @@ Auto-deployed on push to `main` via `.github/workflows/deploy.yml`:
 
 ---
 
+## Workflow Git
+
+Travaille toujours directement sur la branche `main`. Ne crée pas de branches ni de worktrees. Commit et push directement sur `main`.
+
+---
+
 ## Next Steps (Roadmap)
 
 - **Remplacer le Mock OCR du Scanner :** Intégrer une vraie solution de lecture d'image (ex: API Vision — Google Cloud Vision, AWS Textract, ou Mistral OCR). Remplacer `MOCK_ARTICLES` dans `Scanner.jsx` par l'appel API réel. La shape de données attendue reste la même : `{ id, nom, prix, matchedNom }`.
