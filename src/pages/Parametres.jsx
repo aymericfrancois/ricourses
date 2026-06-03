@@ -1178,9 +1178,6 @@ function Parametres() {
                     <p className="text-sm font-semibold ink capitalize mb-2">{nom}</p>
                     <div className="flex flex-wrap gap-2">
                       {magasinsPrix.map(({ magasin, obs, historique }) => {
-                        const prixAff = obs.prix_normalise != null
-                          ? formatPrixNorm(obs.prix_normalise, UNITE_BASE_NOM[obs.famille] ?? 'u')
-                          : `${Number(obs.prix).toFixed(2)} € (brut)`
                         const isCheap = magasin === moinsCher
                         // Variation si ≥2 obs normalisées
                         let variation = null
@@ -1191,10 +1188,26 @@ function Parametres() {
                           if (pct !== 0) variation = { pct, up: pct > 0 }
                         }
                         const date = new Date(obs.date_ticket ?? obs.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+
+                        // Ligne quantité : "850 g", "1 kg", etc.
+                        const qtyLabel = obs.quantite != null && obs.unite
+                          ? `${obs.quantite % 1 === 0 ? obs.quantite : obs.quantite} ${obs.unite}`
+                          : null
+
+                        // Prix brut toujours affiché
+                        const prixBrut = `${Number(obs.prix).toFixed(2).replace('.', ',')} €`
+
+                        // Prix normalisé en sous-titre si dispo
+                        const prixNorm = obs.prix_normalise != null
+                          ? formatPrixNorm(obs.prix_normalise, UNITE_BASE_NOM[obs.famille] ?? 'u')
+                          : null
+
                         return (
                           <div key={magasin} className={`flex flex-col gap-0.5 rounded-xl px-3 py-2 border text-xs ${isCheap ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-white/60 border-white/70 ink-2'}`}>
                             <span className="font-bold text-[11px] ink-3">{magasin}</span>
-                            <span className={`font-extrabold text-sm ${isCheap ? 'text-green-700' : 'ink'}`}>{prixAff}</span>
+                            {qtyLabel && <span className="text-[10px] ink-3">{qtyLabel}</span>}
+                            <span className={`font-extrabold text-sm ${isCheap ? 'text-green-700' : 'ink'}`}>{prixBrut}</span>
+                            {prixNorm && <span className={`text-[11px] font-semibold ${isCheap ? 'text-green-600' : 'accent-text'}`}>{prixNorm}</span>}
                             <span className="text-[10px] ink-4">{date}{variation && <span className={variation.up ? ' text-red-500' : ' text-green-600'}> {variation.up ? '↑' : '↓'}{Math.abs(variation.pct)}%</span>}</span>
                           </div>
                         )
