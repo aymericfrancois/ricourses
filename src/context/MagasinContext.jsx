@@ -358,6 +358,32 @@ export function MagasinProvider({ children }) {
             .then(({ error: e }) => { if (e) console.error('renommerIngredientDansRayons delete:', e) })
         })
     }
+
+    // Renommer dans standaloneIngredients (non couvert par usePlats)
+    const nouveauNomTrimmed = nouveauNom.trim()
+    setStandaloneIngredients(prev =>
+      prev.map(n => n.toLowerCase() === ancienKey ? nouveauNomTrimmed : n)
+    )
+    supabase.from('ingredients_standalone')
+      .update({ nom: nouveauNomTrimmed })
+      .ilike('nom', ancienNom)
+      .then(({ error }) => { if (error) console.error('renommerIngredientDansRayons standalone:', error) })
+
+    // Migrer la clé dans splits (le défaut Tricount suit le renommage)
+    setSplitsState(prev => {
+      if (!(ancienKey in prev)) return prev
+      const { [ancienKey]: val, ...rest } = prev
+      return { ...rest, [nouveauKey]: val }
+    })
+    if (ancienKey in splits) {
+      supabase.from('ingredient_splits')
+        .upsert({ ingredient_nom: nouveauKey, split: splits[ancienKey] }, { onConflict: 'ingredient_nom' })
+        .then(({ error }) => {
+          if (error) { console.error('renommerIngredientDansRayons splits upsert:', error); return }
+          supabase.from('ingredient_splits').delete().eq('ingredient_nom', ancienKey)
+            .then(({ error: e }) => { if (e) console.error('renommerIngredientDansRayons splits delete:', e) })
+        })
+    }
   }
 
   function supprimerIngredientDansRayons(nom) {
