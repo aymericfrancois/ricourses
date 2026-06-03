@@ -111,6 +111,9 @@ export function MagasinProvider({ children }) {
     } catch { return {} }
   })
 
+  // { [ingredient_nom_lowercase]: [{split, created_at}, ...] } trié du + récent au + ancien
+  const [scannerHistorique, setScannerHistorique] = useState({})
+
   // ---- Persist localStorage ----
   useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif) }, [magasinActif])
   useEffect(() => { localStorage.setItem(STORAGE_KEY_RAYONS, JSON.stringify(rayonsParMagasin)) }, [rayonsParMagasin])
@@ -170,6 +173,28 @@ export function MagasinProvider({ children }) {
     fetchOcrAliases()
   }, [])
 
+  // ---- Fetch Supabase : scanner_historique ----
+  useEffect(() => {
+    async function fetchHistorique() {
+      const { data, error } = await supabase
+        .from('scanner_historique')
+        .select('ingredient_nom, split_choisi, created_at')
+        .order('created_at', { ascending: false })
+
+      if (error) { console.error('fetchHistorique:', error); return }
+      if (data.length === 0) return
+
+      const index = {}
+      for (const row of data) {
+        const key = row.ingredient_nom
+        if (!index[key]) index[key] = []
+        index[key].push({ split: row.split_choisi, created_at: row.created_at })
+      }
+      setScannerHistorique(index)
+    }
+    fetchHistorique()
+  }, [])
+
   // ---- Fetch Supabase : ingredients_standalone ----
   useEffect(() => {
     async function fetchStandalone() {
@@ -223,6 +248,50 @@ export function MagasinProvider({ children }) {
     supabase.from('ingredient_splits')
       .upsert({ ingredient_nom: key, split: valeur }, { onConflict: 'ingredient_nom' })
       .then(({ error }) => { if (error) console.error('setSplit:', error) })
+  }
+
+  // ---- Historique Scanner ----
+
+  function getHistoriqueSplits(nomIngredient) {
+    if (!nomIngredient) return null
+    const votes = scannerHistorique[nomIngredient.toLowerCase()]
+    if (!votes || votes.length < 2) return null
+    const counts = { me: 0, both: 0, ali: 0 }
+    for (const v of votes) counts[v.split] = (counts[v.split] || 0) + 1
+    const max = Math.max(...Object.values(counts))
+    const candidats = Object.entries(counts).filter(([, c]) => c === max).map(([s]) => s)
+    if (candidats.length === 1) return candidats[0]
+    // Départage par le plus récent (votes déjà triés desc)
+    for (const v of votes) {
+      if (candidats.includes(v.split)) return v.split
+    }
+    return null
+  }
+
+  async function enregistrerHistorique(entries) {
+    const valides = entries.filter(e => e.ingredient_nom && e.split_choisi)
+    if (valides.length === 0) return
+
+    const now = new Date().toISOString()
+    setScannerHistorique(prev => {
+      const next = { ...prev }
+      for (const { ingredient_nom, split_choisi } of valides) {
+        const key = ingredient_nom.toLowerCase()
+        next[key] = [{ split: split_choisi, created_at: now }, ...(next[key] || [])]
+      }
+      return next
+    })
+
+    for (const { ingredient_nom, split_choisi } of valides) {
+      setSplit(ingredient_nom, split_choisi)
+    }
+
+    const rows = valides.map(({ ingredient_nom, split_choisi }) => ({
+      ingredient_nom: ingredient_nom.toLowerCase(),
+      split_choisi,
+    }))
+    const { error } = await supabase.from('scanner_historique').insert(rows)
+    if (error) console.error('enregistrerHistorique:', error)
   }
 
   // ---- Magasin actif ----
@@ -340,7 +409,7 @@ export function MagasinProvider({ children }) {
       magasinActif, setMagasinActif,
       rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
       standaloneIngredients, ajouterIngredientStandalone,
-      getSplit, setSplit,
+      getSplit, setSplit, getHistoriqueSplits, enregistrerHistorique,
       ocrAliases, getOcrAlias, setOcrAlias,
     }}>
       {children}

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
-  BookmarkPlus, BookmarkCheck, AlertCircle, Trash2, ChevronDown, Undo2,
+  AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -148,12 +148,24 @@ function parserTicket(texte) {
   return articles
 }
 
+// Réduit un mot à sa racine en supprimant les suffixes pluriels/féminins courants
+function stemmer(mot) {
+  if (mot.length <= 4) return mot
+  if (mot.endsWith('eaux') || mot.endsWith('iaux')) return mot.slice(0, -3)
+  if (mot.endsWith('ees') || mot.endsWith('ies')) return mot.slice(0, -3)
+  if (mot.endsWith('es')) return mot.slice(0, -2)
+  if (mot.endsWith('s') || mot.endsWith('x')) return mot.slice(0, -1)
+  return mot
+}
+
 function trouverCorrespondance(nomArticle, ingredientNames, getOcrAlias) {
+  // Passe 1 : alias OCR mémorisé (exact, prioritaire)
   const alias = getOcrAlias(nomArticle)
   if (alias) return alias
 
   const normArticle = normaliser(nomArticle)
 
+  // Passe 2 : correspondance exacte + pluriel en s (ex: "Tomate" → "tomates")
   for (const ing of ingredientNames) {
     const normIng = normaliser(ing)
     if (normIng.length < 3) continue
@@ -162,12 +174,16 @@ function trouverCorrespondance(nomArticle, ingredientNames, getOcrAlias) {
     if (re.test(normArticle)) return ing
   }
 
-  const wordsArticle = normArticle.split(' ').filter(w => w.length >= 5)
-  if (wordsArticle.length > 0) {
-    for (const ing of ingredientNames) {
-      const wordsIng = normaliser(ing).split(' ').filter(w => w.length >= 5)
-      if (wordsIng.length > 0 && wordsIng.every(w => wordsArticle.includes(w))) return ing
-    }
+  // Passe 3 : correspondance par racine (gère pluriels/singuliers dans les deux sens)
+  // Ex: ingredient "Tomates" → stem "tomate" matche article "TOMATE CERISE"
+  const articleTokens = normArticle.split(' ').filter(w => w.length >= 4)
+  const articleStems = articleTokens.map(stemmer)
+  for (const ing of ingredientNames) {
+    const normIng = normaliser(ing)
+    const ingTokens = normIng.split(' ').filter(w => w.length >= 4)
+    if (ingTokens.length === 0) continue
+    const ingStems = ingTokens.map(stemmer)
+    if (ingStems.every(ingStem => articleStems.includes(ingStem))) return ing
   }
 
   return null
@@ -302,7 +318,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, setSplit, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias } = useMagasinContext()
   const { plats } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -313,7 +329,8 @@ function Scanner() {
   const [articleSplits, setArticleSplits] = useState({})
   const [ocrProgress, setOcrProgress] = useState(0)
   const [ocrStatus, setOcrStatus] = useState('')
-  const [recentlySaved, setRecentlySaved] = useState(new Set())
+  const [validating, setValidating] = useState(false)
+  const [validated, setValidated] = useState(false)
 
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -360,7 +377,9 @@ function Scanner() {
 
       const initial = {}
       extracted.forEach(a => {
-        initial[a.id] = a.matchedNom ? getSplit(a.matchedNom) : 'both'
+        initial[a.id] = a.matchedNom
+          ? (getHistoriqueSplits(a.matchedNom) ?? getSplit(a.matchedNom))
+          : 'both'
       })
 
       setArticles(extracted)
@@ -380,6 +399,19 @@ function Scanner() {
     setArticleSplits({})
     setOcrProgress(0)
     setOcrStatus('')
+    setValidated(false)
+    setValidating(false)
+  }
+
+  async function handleValider() {
+    setValidating(true)
+    const entries = articlesActifs
+      .filter(a => a.matchedNom)
+      .map(a => ({ ingredient_nom: a.matchedNom, split_choisi: articleSplits[a.id] ?? 'both' }))
+    await enregistrerHistorique(entries)
+    setValidating(false)
+    setValidated(true)
+    setTimeout(() => setValidated(false), 2500)
   }
 
   function setArticleSplit(id, val) {
@@ -405,15 +437,6 @@ function Scanner() {
 
   function creerIngredient(nom) {
     ajouterIngredientStandalone(nom, null)
-  }
-
-  function memoriserDefaut(article) {
-    const val = articleSplits[article.id] ?? 'both'
-    setSplit(article.matchedNom, val)
-    setRecentlySaved(prev => new Set([...prev, article.id]))
-    setTimeout(() => setRecentlySaved(prev => {
-      const next = new Set(prev); next.delete(article.id); return next
-    }), 1500)
   }
 
   const articlesActifs = articles.filter(a => !a.ignored)
@@ -607,9 +630,6 @@ function Scanner() {
         <div className="glass divide-y divide-white/40 overflow-hidden">
           {articles.map(article => {
             const split = articleSplits[article.id] ?? 'both'
-            const defaultSplit = article.matchedNom ? getSplit(article.matchedNom) : 'both'
-            const isModified = article.matchedNom && split !== defaultSplit
-            const justSaved = recentlySaved.has(article.id)
             return (
               <div
                 key={article.id}
@@ -647,37 +667,41 @@ function Scanner() {
                   </div>
                 )}
 
-                <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
-                  {!article.ignored && (
-                    <>
-                      {justSaved ? (
-                        <span className="flex items-center gap-1 text-[10px] accent-text font-semibold">
-                          <BookmarkCheck size={13} />
-                        </span>
-                      ) : isModified ? (
-                        <button
-                          onClick={() => memoriserDefaut(article)}
-                          title={`Mémoriser "${split === 'me' ? 'Moi' : split === 'ali' ? 'Ali' : '50/50'}" pour ${article.matchedNom}`}
-                          className="ink-4 hover:accent-text transition-colors"
-                        >
-                          <BookmarkPlus size={14} />
-                        </button>
-                      ) : (
-                        <span className="w-3.5" />
-                      )}
-                    </>
-                  )}
-                  <button
-                    onClick={() => toggleIgnored(article.id)}
-                    title={article.ignored ? 'Restaurer cet article' : 'Ignorer cet article'}
-                    className={`transition-colors ${article.ignored ? 'ink-3 hover:accent-text' : 'ink-4 hover:text-red-400'}`}
-                  >
-                    {article.ignored ? <Undo2 size={13} /> : <Trash2 size={13} />}
-                  </button>
-                </div>
+                <button
+                  onClick={() => toggleIgnored(article.id)}
+                  title={article.ignored ? 'Restaurer cet article' : 'Ignorer cet article'}
+                  className={`shrink-0 pt-0.5 transition-colors ${article.ignored ? 'ink-3 hover:accent-text' : 'ink-4 hover:text-red-400'}`}
+                >
+                  {article.ignored ? <Undo2 size={13} /> : <Trash2 size={13} />}
+                </button>
               </div>
             )
           })}
+        </div>
+
+        {/* Bouton Valider */}
+        <div className="mt-4 flex justify-center">
+          {validated ? (
+            <span className="flex items-center gap-2 text-sm font-semibold accent-text">
+              <BookmarkCheck size={16} />Ticket mémorisé !
+            </span>
+          ) : (
+            <button
+              onClick={handleValider}
+              disabled={validating || articlesActifs.filter(a => a.matchedNom).length === 0}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                validating || articlesActifs.filter(a => a.matchedNom).length === 0
+                  ? 'bg-white/40 ink-4 border border-white/60 cursor-not-allowed'
+                  : 'accent-bg hover:brightness-110 shadow-md active:scale-[0.98]'
+              }`}
+            >
+              {validating ? (
+                <><span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />Mémorisation…</>
+              ) : (
+                <><BookmarkCheck size={16} />Valider et mémoriser</>
+              )}
+            </button>
+          )}
         </div>
 
       </main>
