@@ -575,7 +575,7 @@ function Scanner() {
   const nbIgnored = articles.filter(a => a.ignored).length
 
   return (
-    <div className="pb-36">
+    <div className="pb-52">
       <main className="max-w-3xl mx-auto px-4 py-6 anim-in">
 
         {/* En-tête */}
@@ -604,7 +604,7 @@ function Scanner() {
         </div>
 
         {/* Liste des articles */}
-        <div className="glass sheen divide-y divide-white/40 overflow-hidden">
+        <div className="glass divide-y divide-white/40 overflow-hidden">
           {articles.map(article => {
             const split = articleSplits[article.id] ?? 'both'
             const defaultSplit = article.matchedNom ? getSplit(article.matchedNom) : 'both'
