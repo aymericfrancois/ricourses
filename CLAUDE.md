@@ -2,6 +2,12 @@
 
 This file provides guidance for AI assistants working in this codebase.
 
+## Règles de travail
+
+- **Toujours travailler sur `main` directement.** Ne jamais créer de branche feature. Commit et push sur `main` — le déploiement en production est automatique via GitHub Actions.
+
+---
+
 ## Project Overview
 
 **Ricourses** is a French-language meal planning, grocery list, and household expense splitting web app. Users plan their week (assign meals per day, add free ingredients), the app auto-generates a shopping list grouped by store section, and a Scanner page reads receipts to split expenses via a Tricount-style calculator. All state is persisted in `localStorage`; there is no backend.
