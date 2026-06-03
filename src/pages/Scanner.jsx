@@ -148,12 +148,12 @@ function parserTicket(texte) {
   return articles
 }
 
-// Réduit un mot à sa racine en supprimant les suffixes pluriels/féminins courants
+// Réduit un mot à sa racine en retirant le pluriel français standard (-s / -x).
+// Volontairement minimaliste : retirer "es" confondrait pluriel et mots en -e
+// (ex: "asperges" → "asperg" ≠ "asperge"). Un seul caractère final suffit :
+// "asperges"→"asperge", "gateaux"→"gateau", "poireaux"→"poireau".
 function stemmer(mot) {
   if (mot.length <= 4) return mot
-  if (mot.endsWith('eaux') || mot.endsWith('iaux')) return mot.slice(0, -3)
-  if (mot.endsWith('ees') || mot.endsWith('ies')) return mot.slice(0, -3)
-  if (mot.endsWith('es')) return mot.slice(0, -2)
   if (mot.endsWith('s') || mot.endsWith('x')) return mot.slice(0, -1)
   return mot
 }
