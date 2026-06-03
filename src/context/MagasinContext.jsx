@@ -303,7 +303,8 @@ export function MagasinProvider({ children }) {
     async function fetchPrix() {
       const { data, error } = await supabase
         .from('prix_observations')
-        .select('magasin_id, ingredient_nom, prix, quantite, unite, prix_normalise, famille, created_at, magasins!magasin_id(nom)')
+        .select('magasin_id, ingredient_nom, prix, quantite, unite, prix_normalise, famille, date_ticket, created_at, magasins!magasin_id(nom)')
+        .order('date_ticket', { ascending: false })
         .order('created_at', { ascending: false })
 
       if (error) { console.error('fetchPrix:', error); return }
@@ -322,6 +323,7 @@ export function MagasinProvider({ children }) {
           unite: row.unite,
           prix_normalise: row.prix_normalise,
           famille: row.famille,
+          date_ticket: row.date_ticket,
           created_at: row.created_at,
         })
       }
@@ -342,11 +344,13 @@ export function MagasinProvider({ children }) {
     return prixObservations[magasinNom]?.[ingredientNom.toLowerCase()] ?? []
   }
 
-  async function enregistrerPrix(observations) {
+  // dateTicket : 'YYYY-MM-DD' (date du ticket, éditable au scan). Défaut = aujourd'hui.
+  async function enregistrerPrix(observations, dateTicket) {
     const magasin = magasins.find(m => m.nom === magasinActif)
     if (!magasin || !UUID_REGEX.test(magasin.id)) return
 
     const now = new Date().toISOString()
+    const jour = dateTicket || now.slice(0, 10)
     const rows = observations
       .filter(o => o.ingredient_nom && o.prix != null)
       .map(o => {
@@ -359,21 +363,23 @@ export function MagasinProvider({ children }) {
           unite: o.unite ?? null,
           prix_normalise: norm?.prixNorm ?? null,
           famille: norm?.famille ?? null,
+          date_ticket: jour,
           source: 'scanner',
         }
       })
 
     if (rows.length === 0) return
 
-    // Mise à jour optimiste
+    // Mise à jour optimiste — réinsère puis re-trie par date_ticket DESC
     setPrixObservations(prev => {
       const next = { ...prev }
       if (!next[magasinActif]) next[magasinActif] = {}
       const store = { ...next[magasinActif] }
       for (const row of rows) {
         const key = row.ingredient_nom
-        const obs = { prix: row.prix, quantite: row.quantite, unite: row.unite, prix_normalise: row.prix_normalise, famille: row.famille, created_at: now }
+        const obs = { prix: row.prix, quantite: row.quantite, unite: row.unite, prix_normalise: row.prix_normalise, famille: row.famille, date_ticket: row.date_ticket, created_at: now }
         store[key] = [obs, ...(store[key] ?? [])]
+          .sort((a, b) => (b.date_ticket ?? '').localeCompare(a.date_ticket ?? '') || (b.created_at ?? '').localeCompare(a.created_at ?? ''))
       }
       next[magasinActif] = store
       return next

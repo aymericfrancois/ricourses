@@ -1190,7 +1190,7 @@ function Parametres() {
                           const pct = Math.round((diff / normHist[1].prix_normalise) * 100)
                           if (pct !== 0) variation = { pct, up: pct > 0 }
                         }
-                        const date = new Date(obs.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+                        const date = new Date(obs.date_ticket ?? obs.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
                         return (
                           <div key={magasin} className={`flex flex-col gap-0.5 rounded-xl px-3 py-2 border text-xs ${isCheap ? 'bg-green-50/80 border-green-200 text-green-800' : 'bg-white/60 border-white/70 ink-2'}`}>
                             <span className="font-bold text-[11px] ink-3">{magasin}</span>

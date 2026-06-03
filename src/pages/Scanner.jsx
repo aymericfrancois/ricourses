@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
-  AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck,
+  AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -364,6 +364,8 @@ function Scanner() {
   const [validated, setValidated] = useState(false)
   // { [articleId]: { quantite: string, unite: string } }
   const [articleQtyUnite, setArticleQtyUnite] = useState({})
+  // Date du ticket (YYYY-MM-DD), éditable. Défaut = aujourd'hui.
+  const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
 
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -446,6 +448,7 @@ function Scanner() {
     setValidated(false)
     setValidating(false)
     setArticleQtyUnite({})
+    setDateTicket(new Date().toISOString().slice(0, 10))
   }
 
   async function handleValider() {
@@ -466,7 +469,7 @@ function Scanner() {
 
     await Promise.all([
       enregistrerHistorique(histEntries),
-      enregistrerPrix(prixEntries),
+      enregistrerPrix(prixEntries, dateTicket),
     ])
     setValidating(false)
     setValidated(true)
@@ -669,10 +672,22 @@ function Scanner() {
               <p className="text-xs ink-3">👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
             </div>
           </div>
-          <button onClick={handleReset}
-            className="flex items-center gap-1.5 text-xs ink-2 hover:ink border border-white/70 rounded-xl px-3 py-1.5 bg-white/50 hover:bg-white/80 transition-colors">
-            <RotateCcw size={12} />Nouveau ticket
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs ink-2 border border-white/70 rounded-xl px-2.5 py-1.5 bg-white/50" title="Date du ticket (sert à dater le prix)">
+              <CalendarDays size={13} className="ink-3" />
+              <input
+                type="date"
+                value={dateTicket}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={e => setDateTicket(e.target.value)}
+                className="bg-transparent focus:outline-none ink-2 text-xs"
+              />
+            </label>
+            <button onClick={handleReset}
+              className="flex items-center gap-1.5 text-xs ink-2 hover:ink border border-white/70 rounded-xl px-3 py-1.5 bg-white/50 hover:bg-white/80 transition-colors">
+              <RotateCcw size={12} />Nouveau ticket
+            </button>
+          </div>
         </div>
 
         {/* Légende */}
