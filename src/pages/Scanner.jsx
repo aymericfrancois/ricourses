@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
   AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
+  Store, Check,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -383,7 +384,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, enregistrerPrix, getDernierePrixObs } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, getDernierePrixObs } = useMagasinContext()
   const { plats } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -400,6 +401,14 @@ function Scanner() {
   const [articleQtyUnite, setArticleQtyUnite] = useState({})
   // Date du ticket (YYYY-MM-DD), éditable. Défaut = aujourd'hui.
   const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
+  const [storeOpen, setStoreOpen] = useState(false)
+  const storeRef = useRef(null)
+
+  useEffect(() => {
+    function onOutsideClick(e) { if (storeRef.current && !storeRef.current.contains(e.target)) setStoreOpen(false) }
+    document.addEventListener('mousedown', onOutsideClick)
+    return () => document.removeEventListener('mousedown', onOutsideClick)
+  }, [])
 
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -552,13 +561,43 @@ function Scanner() {
 
         <div className="mb-6">
           <p className="chip mb-1.5">Scanner</p>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl accent-soft-bg flex items-center justify-center">
-              <ScanLine size={20} className="accent-text" />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl accent-soft-bg flex items-center justify-center">
+                <ScanLine size={20} className="accent-text" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-extrabold tracking-tight ink">Scanner un ticket</h1>
+                <p className="text-xs ink-3">Extrait les articles et calcule la répartition</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight ink">Scanner un ticket</h1>
-              <p className="text-xs ink-3">Extrait les articles et calcule la répartition</p>
+            {/* Sélecteur de magasin — bien visible pour éviter de scanner sous le mauvais magasin */}
+            <div className="relative shrink-0" ref={storeRef}>
+              <button
+                onClick={() => setStoreOpen(o => !o)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl accent-soft-bg border border-[color:var(--accent)]/30 text-sm font-semibold accent-text hover:brightness-95 transition-colors"
+              >
+                <Store size={14} />
+                <span>{magasinActif}</span>
+                <ChevronDown size={13} />
+              </button>
+              {storeOpen && (
+                <div className="absolute right-0 mt-2 min-w-[160px] popover p-1.5 anim-pop z-40">
+                  <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
+                  {magasins.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+                      }`}
+                    >
+                      <span>{m.nom}</span>
+                      {m.nom === magasinActif && <Check size={13} />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -717,6 +756,33 @@ function Scanner() {
                 className="bg-transparent focus:outline-none ink-2 text-xs"
               />
             </label>
+            <div className="relative shrink-0" ref={storeRef}>
+              <button
+                onClick={() => setStoreOpen(o => !o)}
+                className="flex items-center gap-1.5 text-xs font-semibold accent-text border border-[color:var(--accent)]/30 rounded-xl px-2.5 py-1.5 accent-soft-bg hover:brightness-95 transition-colors"
+              >
+                <Store size={12} />
+                <span>{magasinActif}</span>
+                <ChevronDown size={11} />
+              </button>
+              {storeOpen && (
+                <div className="absolute right-0 mt-2 min-w-[160px] popover p-1.5 anim-pop z-40">
+                  <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
+                  {magasins.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                        m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+                      }`}
+                    >
+                      <span>{m.nom}</span>
+                      {m.nom === magasinActif && <Check size={13} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button onClick={handleReset}
               className="flex items-center gap-1.5 text-xs ink-2 hover:ink border border-white/70 rounded-xl px-3 py-1.5 bg-white/50 hover:bg-white/80 transition-colors">
               <RotateCcw size={12} />Nouveau ticket
