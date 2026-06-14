@@ -561,43 +561,13 @@ function Scanner() {
 
         <div className="mb-6">
           <p className="chip mb-1.5">Scanner</p>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl accent-soft-bg flex items-center justify-center">
-                <ScanLine size={20} className="accent-text" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-extrabold tracking-tight ink">Scanner un ticket</h1>
-                <p className="text-xs ink-3">Extrait les articles et calcule la répartition</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl accent-soft-bg flex items-center justify-center">
+              <ScanLine size={20} className="accent-text" />
             </div>
-            {/* Sélecteur de magasin — bien visible pour éviter de scanner sous le mauvais magasin */}
-            <div className="relative shrink-0" ref={storeRef}>
-              <button
-                onClick={() => setStoreOpen(o => !o)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl accent-soft-bg border border-[color:var(--accent)]/30 text-sm font-semibold accent-text hover:brightness-95 transition-colors"
-              >
-                <Store size={14} />
-                <span>{magasinActif}</span>
-                <ChevronDown size={13} />
-              </button>
-              {storeOpen && (
-                <div className="absolute right-0 mt-2 min-w-[160px] popover p-1.5 anim-pop z-40">
-                  <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
-                  {magasins.map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
-                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                        m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
-                      }`}
-                    >
-                      <span>{m.nom}</span>
-                      {m.nom === magasinActif && <Check size={13} />}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div>
+              <h1 className="text-2xl font-extrabold tracking-tight ink">Scanner un ticket</h1>
+              <p className="text-xs ink-3">Extrait les articles et calcule la répartition</p>
             </div>
           </div>
         </div>
@@ -733,7 +703,7 @@ function Scanner() {
   const nbIgnored = articles.filter(a => a.ignored).length
 
   return (
-    <div className="pb-52">
+    <div className="pb-64">
       <main className="max-w-3xl mx-auto px-4 py-6 anim-in">
 
         {/* En-tête */}
@@ -745,49 +715,10 @@ function Scanner() {
               <p className="text-xs ink-3">👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs ink-2 border border-white/70 rounded-xl px-2.5 py-1.5 bg-white/50" title="Date du ticket (sert à dater le prix)">
-              <CalendarDays size={13} className="ink-3" />
-              <input
-                type="date"
-                value={dateTicket}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={e => setDateTicket(e.target.value)}
-                className="bg-transparent focus:outline-none ink-2 text-xs"
-              />
-            </label>
-            <div className="relative shrink-0" ref={storeRef}>
-              <button
-                onClick={() => setStoreOpen(o => !o)}
-                className="flex items-center gap-1.5 text-xs font-semibold accent-text border border-[color:var(--accent)]/30 rounded-xl px-2.5 py-1.5 accent-soft-bg hover:brightness-95 transition-colors"
-              >
-                <Store size={12} />
-                <span>{magasinActif}</span>
-                <ChevronDown size={11} />
-              </button>
-              {storeOpen && (
-                <div className="absolute right-0 mt-2 min-w-[160px] popover p-1.5 anim-pop z-40">
-                  <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
-                  {magasins.map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
-                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                        m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
-                      }`}
-                    >
-                      <span>{m.nom}</span>
-                      {m.nom === magasinActif && <Check size={13} />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button onClick={handleReset}
-              className="flex items-center gap-1.5 text-xs ink-2 hover:ink border border-white/70 rounded-xl px-3 py-1.5 bg-white/50 hover:bg-white/80 transition-colors">
-              <RotateCcw size={12} />Nouveau ticket
-            </button>
-          </div>
+          <button onClick={handleReset}
+            className="flex items-center gap-1.5 text-xs ink-2 hover:ink border border-white/70 rounded-xl px-3 py-1.5 bg-white/50 hover:bg-white/80 transition-colors">
+            <RotateCcw size={12} />Nouveau ticket
+          </button>
         </div>
 
         {/* Légende */}
@@ -911,7 +842,49 @@ function Scanner() {
       {/* Panneau Tricount fixe */}
       <div className="fixed bottom-0 left-0 right-0 z-30">
         <div className="h-14 bg-gradient-to-b from-transparent to-white/80 pointer-events-none" />
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-2">
+
+        {/* Barre date + magasin — juste au-dessus des totaux */}
+        <div className="max-w-3xl mx-auto flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs ink-2 border border-white/70 rounded-xl px-2.5 py-1.5 bg-white/80 backdrop-blur-sm" title="Date du ticket">
+            <CalendarDays size={13} className="ink-3" />
+            <input
+              type="date"
+              value={dateTicket}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={e => setDateTicket(e.target.value)}
+              className="bg-transparent focus:outline-none ink-2 text-xs"
+            />
+          </label>
+          <div className="relative" ref={storeRef}>
+            <button
+              onClick={() => setStoreOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs font-semibold accent-text border border-[color:var(--accent)]/30 rounded-xl px-2.5 py-1.5 accent-soft-bg backdrop-blur-sm hover:brightness-95 transition-colors"
+            >
+              <Store size={12} />
+              <span>{magasinActif}</span>
+              <ChevronDown size={11} />
+            </button>
+            {storeOpen && (
+              <div className="absolute left-0 bottom-full mb-2 min-w-[160px] popover p-1.5 anim-pop z-50">
+                <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
+                {magasins.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                      m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+                    }`}
+                  >
+                    <span>{m.nom}</span>
+                    {m.nom === magasinActif && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4" style={{ background: 'rgba(255,255,255,0.96)' }}>
           <div className="flex items-stretch gap-4">
             <div className="flex-1">
