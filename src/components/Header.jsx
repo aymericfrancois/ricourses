@@ -33,10 +33,10 @@ function Header() {
 
   return (
     <header className="sticky top-0 z-30 px-2 sm:px-4 pt-2 sm:pt-4">
-      <div className="max-w-6xl mx-auto glass-strong sheen overflow-hidden px-2 sm:px-3 py-1.5 sm:py-2.5 flex items-center gap-1.5 sm:gap-3 relative">
+      <div className="max-w-6xl mx-auto glass-strong sheen px-2 sm:px-3 py-1.5 sm:py-2.5 flex items-center gap-1.5 sm:gap-3 relative">
 
         {/* Barre tricolore enseigne */}
-        <div className="absolute top-0 left-0 right-0 h-1 magasin-grad-bg" />
+        <div className="absolute top-0 left-0 right-0 h-1 magasin-grad-bg rounded-t-[var(--radius)]" />
 
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
