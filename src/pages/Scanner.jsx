@@ -170,6 +170,24 @@ function parserTicket(texte) {
     let cleanedName
 
     if (isMultiplierLine) {
+      // La ligne "N X p_unit [p_total]" concerne l'article qui la précède immédiatement.
+      // On patche son prix plutôt que de créer un doublon.
+      const mQty = trimmed.match(/^\s*(\d+)\s*[xXàÀ*]/)
+      const qty = mQty ? parseInt(mQty[1], 10) : 1
+      if (articles.length > 0) {
+        const last = articles[articles.length - 1]
+        if (allPrices.length >= 2) {
+          // "2 X 0,98  1,96" → le total est le dernier prix sur la ligne
+          last.prix = prix
+          last.prixBase = prix
+        } else {
+          // "2 X 0,98" → pas de total explicite, on calcule
+          last.prix = Number((qty * prix).toFixed(2))
+          last.prixBase = Number((qty * prix).toFixed(2))
+        }
+        continue
+      }
+      // Fallback : aucun article précédent → on traite comme un article classique
       const prevLine = i > 0 ? lines[i - 1].trim() : ''
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
