@@ -120,6 +120,17 @@ export function MagasinProvider({ children }) {
 
   // ---- Persist localStorage ----
   useEffect(() => { localStorage.setItem(STORAGE_KEY_ACTIF, magasinActif) }, [magasinActif])
+
+  // ---- Thème couleur selon l'enseigne (dégradé tricolore, toute l'app) ----
+  useEffect(() => {
+    const n = (magasinActif || '').toLowerCase()
+    let grad = ''
+    if (n.includes('lidl')) grad = 'linear-gradient(135deg, #0050AA, #FFE500, #E60A14)'
+    else if (n.includes('carrefour')) grad = 'linear-gradient(135deg, #004E9F, #ffffff, #E30613)'
+    else if (n.includes('leclerc')) grad = 'linear-gradient(135deg, #0061AF, #ffffff, #FF6600)'
+    if (grad) document.documentElement.style.setProperty('--magasin-grad', grad)
+    else document.documentElement.style.removeProperty('--magasin-grad')
+  }, [magasinActif])
   useEffect(() => { localStorage.setItem(STORAGE_KEY_RAYONS, JSON.stringify(rayonsParMagasin)) }, [rayonsParMagasin])
   useEffect(() => { localStorage.setItem(STORAGE_KEY_STANDALONE, JSON.stringify(standaloneIngredients)) }, [standaloneIngredients])
   useEffect(() => { localStorage.setItem(STORAGE_KEY_SPLITS, JSON.stringify(splits)) }, [splits])

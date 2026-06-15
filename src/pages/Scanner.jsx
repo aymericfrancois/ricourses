@@ -633,7 +633,7 @@ function Scanner() {
           disabled={!imageFile || step === 'loading'}
           className={`mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-all ${
             imageFile && step !== 'loading'
-              ? 'accent-bg hover:brightness-110 shadow-md active:scale-[0.98]'
+              ? 'magasin-grad-bg hover:brightness-110 shadow-md active:scale-[0.98]'
               : 'bg-white/40 ink-4 cursor-not-allowed border border-white/60'
           }`}
         >
@@ -825,7 +825,7 @@ function Scanner() {
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 validating || articlesActifs.filter(a => a.matchedNom).length === 0
                   ? 'bg-white/40 ink-4 border border-white/60 cursor-not-allowed'
-                  : 'accent-bg hover:brightness-110 shadow-md active:scale-[0.98]'
+                  : 'magasin-grad-bg hover:brightness-110 shadow-md active:scale-[0.98]'
               }`}
             >
               {validating ? (

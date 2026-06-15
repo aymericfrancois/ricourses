@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check, Share2, Eraser,
+  ShoppingCart, Package, GripVertical, Check, Share2, Eraser, FolderInput, ChevronDown,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
@@ -92,10 +92,57 @@ function formatQuantite(item) {
   return item.unite ? ` (${item.unite})` : ''
 }
 
+// ---- Sélecteur de rayon (popover sur clic) ----
+function RayonPicker({ rayons, rayonActuel, onPick }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  // Empêche le drag de démarrer / la rangée de se cocher
+  const stop = e => e.stopPropagation()
+
+  return (
+    <span className="relative shrink-0" ref={ref} onPointerDown={stop}>
+      <button
+        onClick={e => { stop(e); setOpen(o => !o) }}
+        title="Changer de rayon"
+        className="flex items-center gap-0.5 ink-4 hover:accent-text transition-colors p-1 rounded-lg hover:bg-white/50"
+      >
+        <FolderInput size={14} />
+        <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 min-w-[170px] max-h-60 overflow-y-auto popover p-1.5 anim-pop z-50">
+          <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Rayon</p>
+          {rayons.map(r => (
+            <button
+              key={r}
+              onClick={e => { stop(e); onPick(r); setOpen(false) }}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-left transition-colors ${
+                r === rayonActuel ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+              }`}
+            >
+              <span>{r}</span>
+              {r === rayonActuel && <Check size={13} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
 // ---- Ingrédient draggable ----
-// Pas de transform sur la <li> source : c'est le DragOverlay qui suit le doigt/curseur.
-// Appliquer transform ici ET un DragOverlay créerait un décalage visuel pendant le drag.
-function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
+// Tout le bandeau est draggable (clic prolongé). Le tap simple coche grâce aux
+// contraintes d'activation des capteurs (distance 8px / délai 250ms).
+// Pas de transform sur la <li> source : c'est le DragOverlay qui suit le curseur.
+function DraggableIngredient({ item, isChecked, onToggle, borderColor, rayons, rayonActuel, onPickRayon }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `ing:${item.nom}`,
     data: item,
@@ -104,36 +151,33 @@ function DraggableIngredient({ item, isChecked, onToggle, borderColor }) {
   return (
     <li
       ref={setNodeRef}
-      className={`flex items-center gap-2 px-3 py-2.5 select-none transition-colors hover:bg-white/40 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+      {...listeners}
+      {...attributes}
+      onClick={onToggle}
+      className={`flex items-center gap-2 px-3 py-2.5 select-none touch-none cursor-grab active:cursor-grabbing transition-colors hover:bg-white/40 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
     >
       <span
-        {...listeners}
-        {...attributes}
-        className="touch-none cursor-grab active:cursor-grabbing ink-4 hover:ink-3 shrink-0"
-      >
-        <GripVertical size={14} />
-      </span>
-      <span
-        onClick={onToggle}
-        className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors cursor-pointer ${isChecked ? 'border-[color:var(--accent)] accent-bg' : borderColor}`}
+        className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isChecked ? 'border-[color:var(--accent)] accent-bg' : borderColor}`}
       >
         {isChecked && <Check size={10} className="text-white" />}
       </span>
       <span
-        onClick={onToggle}
-        className={`flex-1 text-sm font-semibold transition-colors cursor-pointer ${isChecked ? 'line-through ink-4' : 'ink'}`}
+        className={`flex-1 text-sm font-semibold transition-colors ${isChecked ? 'line-through ink-4' : 'ink'}`}
       >
         {item.nom}
       </span>
       <span className={`text-sm tabular-nums mono transition-colors ${isChecked ? 'ink-4' : 'ink-3'}`}>
         {item.quantite > 0 ? `${item.quantite} ${item.unite}` : item.unite}
       </span>
+      {!isChecked && onPickRayon && (
+        <RayonPicker rayons={rayons} rayonActuel={rayonActuel} onPick={onPickRayon} />
+      )}
     </li>
   )
 }
 
 // ---- Zone droppable (rayon) ----
-function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, isOrphan = false }) {
+function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, isOrphan = false, rayons, onPickRayon }) {
   const { setNodeRef, isOver } = useDroppable({ id: `rayon:${rayonId}` })
   const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
   const isEmpty = items.length === 0
@@ -159,10 +203,44 @@ function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, 
               isChecked={checkedItems.has(item.nom.toLowerCase())}
               onToggle={() => onToggleChecked(item.nom.toLowerCase())}
               borderColor={isOrphan ? 'border-orange-300' : 'border-[color:var(--ink-4)]'}
+              rayons={rayons}
+              rayonActuel={isOrphan ? null : label}
+              onPickRayon={r => onPickRayon(item.nom, r)}
             />
           ))}
         </ul>
       )}
+    </section>
+  )
+}
+
+// ---- Section des articles cochés (simple, non draggable) ----
+function SectionCoches({ items, onToggleChecked }) {
+  const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+  return (
+    <section className="rounded-2xl">
+      <h3 className="text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ink-3">
+        <Check size={13} />
+        Cochés
+        <span className="font-normal normal-case opacity-60">({items.length})</span>
+      </h3>
+      <ul className="glass sheen divide-y divide-white/40">
+        {sorted.map(item => (
+          <li
+            key={item.nom}
+            onClick={() => onToggleChecked(item.nom.toLowerCase())}
+            className="flex items-center gap-2 px-3 py-2.5 select-none cursor-pointer transition-colors hover:bg-white/40 opacity-50"
+          >
+            <span className="w-4 h-4 rounded border-2 border-[color:var(--accent)] accent-bg shrink-0 flex items-center justify-center">
+              <Check size={10} className="text-white" />
+            </span>
+            <span className="flex-1 text-sm font-semibold line-through ink-4">{item.nom}</span>
+            <span className="text-sm tabular-nums mono ink-4">
+              {item.quantite > 0 ? `${item.quantite} ${item.unite}` : item.unite}
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -177,6 +255,7 @@ function ShoppingList() {
   const [activeItem, setActiveItem] = useState(null)
   const [toast, setToast] = useState('')
   const [confirmUncheck, setConfirmUncheck] = useState(false)
+  const isDragging = activeItem != null
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -186,7 +265,7 @@ function ShoppingList() {
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsOrdonnes = magasinCourant?.rayons.map(r => r.nom) ?? []
 
-  const { grouped, orphelins, totalIngredients } = useMemo(() => {
+  const { grouped, orphelins, cochesItems, totalIngredients } = useMemo(() => {
     const ingredientsMap = {}
 
     for (const jour of semaine) {
@@ -234,7 +313,12 @@ function ShoppingList() {
 
     const grouped = {}
     const orphelins = []
+    const cochesItems = []
     for (const item of Object.values(ingredientsMap)) {
+      if (checkedItems.has(item.nom.toLowerCase())) {
+        cochesItems.push(item)
+        continue
+      }
       const rayon = getRayon(item.nom)
       if (rayon && rayonsOrdonnes.includes(rayon)) {
         if (!grouped[rayon]) grouped[rayon] = []
@@ -244,8 +328,8 @@ function ShoppingList() {
       }
     }
 
-    return { grouped, orphelins, totalIngredients: Object.values(ingredientsMap).length }
-  }, [semaine, espacesLibres, plats, getRayon, rayonsOrdonnes])
+    return { grouped, orphelins, cochesItems, totalIngredients: Object.values(ingredientsMap).length }
+  }, [semaine, espacesLibres, plats, getRayon, rayonsOrdonnes, checkedItems])
 
   function buildListeText() {
     const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -394,24 +478,37 @@ function ShoppingList() {
                 checkedItems={checkedItems}
                 onToggleChecked={toggleChecked}
                 isOrphan
+                rayons={rayonsOrdonnes}
+                onPickRayon={setRayon}
               />
             )}
 
-            {rayonsOrdonnes.map(rayonNom => (
-              <DroppableRayon
-                key={rayonNom}
-                rayonId={rayonNom}
-                label={rayonNom}
-                items={grouped[rayonNom] ?? []}
-                checkedItems={checkedItems}
-                onToggleChecked={toggleChecked}
-              />
-            ))}
+            {rayonsOrdonnes.map(rayonNom => {
+              const items = grouped[rayonNom] ?? []
+              // Hors drag : masquer les rayons sans article non-coché.
+              if (!isDragging && items.length === 0) return null
+              return (
+                <DroppableRayon
+                  key={rayonNom}
+                  rayonId={rayonNom}
+                  label={rayonNom}
+                  items={items}
+                  checkedItems={checkedItems}
+                  onToggleChecked={toggleChecked}
+                  rayons={rayonsOrdonnes}
+                  onPickRayon={setRayon}
+                />
+              )
+            })}
 
             {orphelins.length > 0 && (
               <p className="text-xs ink-3 text-center">
                 Glissez un ingrédient « non classé » vers un rayon pour l&apos;assigner à <span className="font-semibold ink-2">{magasinActif}</span>.
               </p>
+            )}
+
+            {cochesItems.length > 0 && (
+              <SectionCoches items={cochesItems} onToggleChecked={toggleChecked} />
             )}
           </div>
 

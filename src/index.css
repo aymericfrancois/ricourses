@@ -10,6 +10,7 @@
   --glass-bg-strong: rgba(255,255,255,0.7);
   --glass-border: rgba(255,255,255,0.65);
   --glass-shadow: 0 10px 36px -14px rgba(30,30,80,0.22), 0 2px 8px -4px rgba(30,30,80,0.08);
+  --magasin-grad: linear-gradient(135deg, var(--accent), color-mix(in oklch, var(--accent) 60%, #7aa7ff));
 }
 
 html, body { height: 100%; }
@@ -61,6 +62,7 @@ body {
 
 /* ===== TOKENS ===== */
 .accent-bg { background: var(--accent); color: #fff; }
+.magasin-grad-bg { background-image: var(--magasin-grad); color: #fff; }
 .accent-soft-bg { background: var(--accent-soft); }
 .accent-text { color: var(--accent-ink); }
 .ink { color: var(--ink); }
