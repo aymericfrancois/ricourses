@@ -176,6 +176,7 @@ function parserTicket(texte) {
         .replace(/(-?\d{1,4}[,.]\d{2})\s*[A-Za-z]?\s*$/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
+        .replace(/^R\s+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .trim()
     } else {
       const firstPriceIndex = allPrices[0].index
@@ -185,6 +186,7 @@ function parserTicket(texte) {
         .replace(/^\d{5,}\s*/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
+        .replace(/^R\s+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .trim()
     }
 
@@ -448,7 +450,22 @@ function Scanner() {
         },
       })
 
-      const extracted = parserTicket(result.data.text).map(a => ({
+      // Fusion des doublons (même article scanné 2x sur le ticket Leclerc)
+      const parsed = parserTicket(result.data.text)
+      const deduped = []
+      const seenNames = {}
+      for (const a of parsed) {
+        const key = normaliser(a.nom)
+        if (seenNames[key] != null) {
+          deduped[seenNames[key]].prix = Number((deduped[seenNames[key]].prix + a.prix).toFixed(2))
+          deduped[seenNames[key]].prixBase = Number((deduped[seenNames[key]].prixBase + a.prix).toFixed(2))
+        } else {
+          seenNames[key] = deduped.length
+          deduped.push({ ...a })
+        }
+      }
+
+      const extracted = deduped.map(a => ({
         ...a,
         matchedNom: trouverCorrespondance(a.nom, ingredientNames, getOcrAlias),
       }))
