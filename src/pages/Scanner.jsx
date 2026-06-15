@@ -455,7 +455,9 @@ function Scanner() {
       const deduped = []
       const seenNames = {}
       for (const a of parsed) {
-        const key = normaliser(a.nom)
+        // Clé = nom + poids/unité : on ne fusionne QUE des articles strictement
+        // identiques (ex: 2× Skyr 850g), jamais des formats différents (450g vs 850g)
+        const key = `${normaliser(a.nom)}|${a.quantite ?? ''}|${a.unite ?? ''}`
         if (seenNames[key] != null) {
           deduped[seenNames[key]].prix = Number((deduped[seenNames[key]].prix + a.prix).toFixed(2))
           deduped[seenNames[key]].prixBase = Number((deduped[seenNames[key]].prixBase + a.prix).toFixed(2))
