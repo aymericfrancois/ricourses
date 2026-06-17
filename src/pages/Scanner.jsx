@@ -425,6 +425,7 @@ function Scanner() {
   const [validated, setValidated] = useState(false)
   // { [articleId]: { quantite: string, unite: string } }
   const [articleQtyUnite, setArticleQtyUnite] = useState({})
+  const [rawOcrText, setRawOcrText] = useState('')
   // Date du ticket (YYYY-MM-DD), éditable. Défaut = aujourd'hui.
   const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
   const [storeOpen, setStoreOpen] = useState(false)
@@ -473,6 +474,8 @@ function Scanner() {
           }
         },
       })
+
+      setRawOcrText(result.data.text || '')
 
       // Fusion des doublons (même article scanné 2x sur le ticket Leclerc)
       const parsed = parserTicket(result.data.text)
@@ -763,6 +766,14 @@ function Scanner() {
             <RotateCcw size={12} />Nouveau ticket
           </button>
         </div>
+
+        {/* Debug : texte OCR brut (à retirer une fois le parsing fiable) */}
+        {rawOcrText && (
+          <details className="glass-sm mb-4 px-3 py-2 text-xs">
+            <summary className="cursor-pointer ink-2 font-semibold select-none">🐞 Texte OCR brut (debug)</summary>
+            <pre className="mt-2 whitespace-pre-wrap break-words ink-3 mono text-[10px] leading-snug max-h-80 overflow-y-auto">{rawOcrText}</pre>
+          </details>
+        )}
 
         {/* Légende */}
         <div className="flex gap-4 mb-4">
