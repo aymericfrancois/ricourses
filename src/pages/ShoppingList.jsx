@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check, Share2, Eraser, FolderInput, ChevronDown,
+  ShoppingCart, Package, GripVertical, Check, Share2, Eraser, FolderInput, ChevronDown, Wallet,
 } from 'lucide-react'
 import {
   DndContext, DragOverlay, useDroppable, useDraggable,
@@ -9,6 +9,7 @@ import {
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
+import { coutIngredient } from '../utils/prix'
 import { supabase } from '../supabaseClient'
 
 // ---- Hook état coché (Supabase + Realtime) ----
@@ -248,7 +249,7 @@ function SectionCoches({ items, onToggleChecked }) {
 // ---- Page Liste de courses ----
 function ShoppingList() {
   const { plats } = usePlats()
-  const { magasins, magasinActif, getRayon, setRayon } = useMagasinContext()
+  const { magasins, magasinActif, getRayon, setRayon, getDernierePrixObs } = useMagasinContext()
   const { semaine, espacesLibres } = usePlanningContext()
 
   const { checkedItems, toggleChecked, uncheckAll } = useCoursesCoches()
@@ -265,7 +266,7 @@ function ShoppingList() {
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsOrdonnes = magasinCourant?.rayons.map(r => r.nom) ?? []
 
-  const { grouped, orphelins, cochesItems, totalIngredients } = useMemo(() => {
+  const { grouped, orphelins, cochesItems, allItems, totalIngredients } = useMemo(() => {
     const ingredientsMap = {}
 
     for (const jour of semaine) {
@@ -328,8 +329,28 @@ function ShoppingList() {
       }
     }
 
-    return { grouped, orphelins, cochesItems, totalIngredients: Object.values(ingredientsMap).length }
+    return { grouped, orphelins, cochesItems, allItems: Object.values(ingredientsMap), totalIngredients: Object.values(ingredientsMap).length }
   }, [semaine, espacesLibres, plats, getRayon, rayonsOrdonnes, checkedItems])
+
+  // Estimation du coût de la liste pour le magasin actif, à partir des derniers
+  // prix scannés. Les articles sans prix connu sont comptés à part (non estimés).
+  const estimation = useMemo(() => {
+    let total = 0
+    let nbEstimes = 0
+    let nbSansPrix = 0
+    for (const item of allItems) {
+      const obs = getDernierePrixObs(magasinActif, item.nom)
+      const qty = item.quantite > 0 ? item.quantite : 1
+      const { cout, estimable } = coutIngredient(qty, item.unite, obs)
+      if (estimable && cout != null) {
+        total += cout
+        nbEstimes += 1
+      } else {
+        nbSansPrix += 1
+      }
+    }
+    return { total, nbEstimes, nbSansPrix }
+  }, [allItems, magasinActif, getDernierePrixObs])
 
   function buildListeText() {
     const date = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -451,6 +472,25 @@ function ShoppingList() {
           )}
         </div>
       </div>
+
+      {totalIngredients > 0 && estimation.nbEstimes > 0 && (
+        <div className="glass sheen px-4 py-3 mb-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl accent-soft-bg flex items-center justify-center shrink-0">
+            <Wallet size={18} className="accent-text" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold ink-3 uppercase tracking-widest">Estimation · {magasinActif}</p>
+            <p className="text-xs ink-3">
+              {estimation.nbEstimes} article{estimation.nbEstimes > 1 ? 's' : ''} estimé{estimation.nbEstimes > 1 ? 's' : ''}
+              {estimation.nbSansPrix > 0 && <span className="ink-4"> · {estimation.nbSansPrix} sans prix connu</span>}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-2xl font-extrabold ink tabular-nums mono">≈ {estimation.total.toFixed(2)} €</p>
+            {estimation.nbSansPrix > 0 && <p className="text-[10px] ink-4">hors articles sans prix</p>}
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-[color:var(--ink)] text-white text-sm shadow-lg anim-pop">
