@@ -172,45 +172,45 @@ function parserTicket(texte) {
     let finalPrix = prix
 
     if (isMultiplierLine) {
-      // La ligne "N X p_ht [p_ttc]" concerne l'article qui la précède.
-      // Deux cas selon que la ligne précédente avait ou non un prix valide :
-      //   Cas A — "ARTICLE 0,98 A" puis "2 X 0,954" : l'article est déjà dans la liste,
-      //            on multiplie son prix unitaire par la quantité.
-      //   Cas B — "ARTICLE" (sans prix) puis "2 X 0,954 0,98" : l'article n'a pas été
-      //            ajouté, on le crée ici avec le total = qty × dernier prix.
+      // Format Leclerc d'un article multiple :
+      //   "Concombre Bio x1 Esp"   ← ligne NOM (sans prix à 2 décimales)
+      //   "   2 x 0,99€    1,98"   ← ligne MULTIPLICATEUR : prix unitaire + TOTAL
+      // Le dernier prix de la ligne est DÉJÀ le total (ne pas le re-multiplier).
       const mQty = trimmed.match(/^\s*(\d+)\s*[xXàÀ*]/)
       const qty = mQty ? parseInt(mQty[1], 10) : 1
+      // Total ligne : si 2+ prix présents, le dernier EST le total ; sinon qty × prix unitaire.
+      const totalLigne = allPrices.length >= 2 ? prix : Number((qty * prix).toFixed(2))
       const prevLine = i > 0 ? lines[i - 1].trim() : ''
-      // Vérifie si la ligne précédente contient un prix à exactement 2 décimales
+      // La ligne précédente avait-elle déjà un prix valide (article déjà ajouté) ?
       const prevHasValidPrice = /\d{1,4}[,.]\d{2}(?!\d)/.test(prevLine)
 
       if (prevHasValidPrice && articles.length > 0) {
-        // Cas A : multiplier le prix unitaire déjà stocké
+        // Cas A : l'article est déjà dans la liste → on remplace son prix par le total.
         const last = articles[articles.length - 1]
-        last.prix = Number((qty * last.prix).toFixed(2))
-        last.prixBase = Number((qty * last.prixBase).toFixed(2))
+        last.prix = totalLigne
+        last.prixBase = totalLigne
         continue
       }
 
-      // Cas B : créer l'article depuis la ligne de nom précédente
+      // Cas B : la ligne précédente était le NOM seul → on crée l'article ici.
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/^\d{5,}\s*/, '')
+        .replace(/^R[\s.]+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
+        .replace(/\b[xX]\s*\d+\b/g, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
-        .replace(/^R\s+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .trim()
-      // Total = qty × prix unitaire TTC (dernier prix sur la ligne multiplicatrice)
-      finalPrix = Number((qty * prix).toFixed(2))
+      finalPrix = totalLigne
     } else {
       const firstPriceIndex = allPrices[0].index
       const rawName = trimmed.slice(0, firstPriceIndex)
       cleanedName = rawName
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/^\d{5,}\s*/, '')
+        .replace(/^R[\s.]+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
-        .replace(/^R\s+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .trim()
     }
 
