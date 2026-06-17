@@ -9,7 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, Trash2, ChevronDown, Pencil, X, Check, Store, GripVertical, Search,
-  GitMerge,
+  GitMerge, FolderInput,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -213,11 +213,59 @@ function SplitMini({ value, onChange }) {
 }
 
 // ---- Tag ingrédient draggable + actions ----
-function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
+// ---- Sélecteur de rayon (popover sur clic) ----
+function RayonPicker({ rayons, rayonActuel, onPick }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  // Empêche le drag de démarrer
+  const stop = e => e.stopPropagation()
+
+  return (
+    <span className="relative shrink-0" ref={ref} onPointerDown={stop}>
+      <button
+        type="button"
+        onClick={e => { stop(e); setOpen(o => !o) }}
+        title="Changer de rayon"
+        className="flex items-center gap-0.5 ink-4 hover:accent-text transition-colors p-1 rounded-lg hover:bg-white/50"
+      >
+        <FolderInput size={13} />
+        <ChevronDown size={9} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 min-w-[170px] max-h-60 overflow-y-auto popover p-1.5 anim-pop z-50">
+          <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Rayon</p>
+          {rayons.map(r => (
+            <button
+              key={r}
+              type="button"
+              onClick={e => { stop(e); onPick(r); setOpen(false) }}
+              className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-left transition-colors ${
+                r === rayonActuel ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+              }`}
+            >
+              <span>{r}</span>
+              {r === rayonActuel && <Check size={13} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function IngredientTag({ nom, isAssigned, onRename, onDelete, rayons }) {
   const [isRenaming, setIsRenaming] = useState(false)
   const [newNom, setNewNom] = useState(nom)
   const submittedRef = useRef(false)
-  const { getSplit, setSplit } = useMagasinContext()
+  const { getSplit, setSplit, getRayon, setRayon } = useMagasinContext()
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: nom })
   const style = { transform: CSS.Translate.toString(transform) }
@@ -262,6 +310,9 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
     >
       <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'ink-2' : 'text-orange-600'}`}>{nom}</span>
       <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
+      {rayons && rayons.length > 0 && (
+        <RayonPicker rayons={rayons} rayonActuel={getRayon(nom)} onPick={r => setRayon(nom, r)} />
+      )}
       <button
         type="button"
         onPointerDown={e => e.stopPropagation()}
@@ -298,7 +349,7 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete }) {
 }
 
 // ---- Section ingrédients droppable ----
-function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngredient, onDeleteIngredient, condensed }) {
+function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngredient, onDeleteIngredient, condensed, rayons }) {
   const { setNodeRef, isOver } = useDroppable({ id: sectionId })
 
   return (
@@ -327,6 +378,7 @@ function DroppableSection({ sectionId, title, ings, isUnassigned, onRenameIngred
             isAssigned={!isUnassigned}
             onRename={nouveauNom => onRenameIngredient(ingNom, nouveauNom)}
             onDelete={() => onDeleteIngredient(ingNom)}
+            rayons={rayons}
           />
         ))}
       </div>
@@ -1039,6 +1091,7 @@ function Parametres() {
                       onRenameIngredient={handleRenameIngredient}
                       onDeleteIngredient={handleDeleteIngredient}
                       condensed={ingDragging}
+                      rayons={rayonsActifs}
                     />
                   )}
                   {sections.map(({ nom: rayonNom, ings }) => (
@@ -1051,6 +1104,7 @@ function Parametres() {
                       onRenameIngredient={handleRenameIngredient}
                       onDeleteIngredient={handleDeleteIngredient}
                       condensed={ingDragging}
+                      rayons={rayonsActifs}
                     />
                   ))}
                 </div>

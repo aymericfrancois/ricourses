@@ -6,7 +6,7 @@ import {
 import { usePlats } from '../hooks/usePlats'
 import { usePlanningContext } from '../context/PlanningContext'
 import { useMagasinContext } from '../context/MagasinContext'
-import { coutIngredient } from '../utils/prix'
+import { estimerCoutItem } from '../utils/prix'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
 const BLOCS_LIBRES = [
@@ -242,7 +242,7 @@ function Planning() {
     resetPlanning, injectDefaultWeek, saveCurrentWeekAsDefault,
   } = usePlanningContext()
 
-  const { magasinActif, getDernierePrixObs } = useMagasinContext()
+  const { magasinActif, prixObservations } = useMagasinContext()
 
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmInject, setConfirmInject] = useState(false)
@@ -319,16 +319,16 @@ function Planning() {
         }
       }
     }
-    let total = 0, nbEstimes = 0, nbSansPrix = 0
+    let total = 0, nbMagasin = 0, nbAutre = 0, nbDefaut = 0
     for (const item of Object.values(ingredientsMap)) {
-      const obs = getDernierePrixObs(magasinActif, item.nom)
-      const qty = item.quantite > 0 ? item.quantite : 1
-      const { cout, estimable } = coutIngredient(qty, item.unite, obs)
-      if (estimable && cout != null) { total += cout; nbEstimes += 1 }
-      else nbSansPrix += 1
+      const { cout, source } = estimerCoutItem(item, magasinActif, prixObservations)
+      total += cout
+      if (source === 'magasin') nbMagasin += 1
+      else if (source === 'autre') nbAutre += 1
+      else nbDefaut += 1
     }
-    return { total, nbEstimes, nbSansPrix, nbTotal: Object.keys(ingredientsMap).length }
-  }, [semaine, espacesLibres, plats, magasinActif, getDernierePrixObs])
+    return { total, nbMagasin, nbAutre, nbDefaut, nbTotal: Object.keys(ingredientsMap).length }
+  }, [semaine, espacesLibres, plats, magasinActif, prixObservations])
 
   function toggleSlot(key) {
     setOpenSlots(prev => ({ ...prev, [key]: !prev[key] }))
@@ -404,7 +404,7 @@ function Planning() {
       </div>
 
       {/* Estimation du coût de la semaine */}
-      {estimation.nbTotal > 0 && estimation.nbEstimes > 0 && (
+      {estimation.nbTotal > 0 && (
         <div className="glass sheen px-4 py-3 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl accent-soft-bg flex items-center justify-center shrink-0">
             <Wallet size={18} className="accent-text" />
@@ -412,13 +412,13 @@ function Planning() {
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-bold ink-3 uppercase tracking-widest">Estimation · {magasinActif}</p>
             <p className="text-xs ink-3">
-              {estimation.nbEstimes} article{estimation.nbEstimes > 1 ? 's' : ''} estimé{estimation.nbEstimes > 1 ? 's' : ''}
-              {estimation.nbSansPrix > 0 && <span className="ink-4"> · {estimation.nbSansPrix} sans prix connu</span>}
+              {estimation.nbTotal} article{estimation.nbTotal > 1 ? 's' : ''}
+              {estimation.nbAutre > 0 && <span className="ink-4"> · {estimation.nbAutre} via autre magasin</span>}
+              {estimation.nbDefaut > 0 && <span className="ink-4"> · {estimation.nbDefaut} au forfait</span>}
             </p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-2xl font-extrabold ink tabular-nums mono">≈ {estimation.total.toFixed(2)} €</p>
-            {estimation.nbSansPrix > 0 && <p className="text-[10px] ink-4">hors articles sans prix</p>}
           </div>
         </div>
       )}

@@ -75,3 +75,45 @@ export function formatPrixNorm(prixNorm, uniteBase) {
   if (prixNorm == null) return null
   return `${prixNorm.toFixed(2).replace('.', ',')} €/${uniteBase ?? 'u'}`
 }
+
+// Valeur forfaitaire (€) appliquée à un article dont le prix est totalement inconnu
+// (jamais scanné, dans aucune enseigne). Estimation grossière "au doigt mouillé".
+export const PRIX_DEFAUT_ARTICLE = 2.5
+
+// estimerCoutItem(item, magasinActif, prixObservations)
+//   item = { nom, quantite, unite }
+//   prixObservations = { [magasinNom]: { [ingredientLower]: [obs, ...] } } (obs[0] = + récent)
+//   → { cout, source: 'magasin' | 'autre' | 'defaut' }
+//
+// Stratégie de repli en cascade :
+//   1. dernier prix observé dans le magasin actif
+//   2. dernier prix observé dans une autre enseigne (le + récent toutes enseignes)
+//   3. valeur forfaitaire PRIX_DEFAUT_ARTICLE
+export function estimerCoutItem(item, magasinActif, prixObservations) {
+  const qty = item.quantite > 0 ? item.quantite : 1
+  const key = item.nom.toLowerCase()
+  const obsParMagasin = prixObservations || {}
+
+  // 1. Magasin actif
+  const direct = obsParMagasin[magasinActif]?.[key]?.[0]
+  if (direct) {
+    const { cout, estimable } = coutIngredient(qty, item.unite, direct)
+    if (estimable && cout != null) return { cout, source: 'magasin' }
+  }
+
+  // 2. Autre enseigne — on retient l'observation la plus récente
+  let best = null
+  for (const mag in obsParMagasin) {
+    if (mag === magasinActif) continue
+    const obs = obsParMagasin[mag]?.[key]?.[0]
+    if (!obs) continue
+    if (!best || (obs.date_ticket ?? '').localeCompare(best.date_ticket ?? '') > 0) best = obs
+  }
+  if (best) {
+    const { cout, estimable } = coutIngredient(qty, item.unite, best)
+    if (estimable && cout != null) return { cout, source: 'autre' }
+  }
+
+  // 3. Forfait — aucun prix connu, ou unité incompatible avec les obs connues
+  return { cout: PRIX_DEFAUT_ARTICLE, source: 'defaut' }
+}
