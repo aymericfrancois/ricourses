@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Trash2, Plus, RotateCcw, X,
-  Check, ChevronDown, ChevronUp, Bookmark, BookmarkCheck,
+  Check, ChevronDown, ChevronUp, Bookmark, BookmarkCheck, Wallet,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { usePlanningContext } from '../context/PlanningContext'
+import { useMagasinContext } from '../context/MagasinContext'
+import { coutIngredient } from '../utils/prix'
 
 const UNITES = ['g', 'kg', 'L', 'cL', 'mL', 'pièce', 'c.à.s', 'c.à.c']
 const BLOCS_LIBRES = [
@@ -240,6 +242,8 @@ function Planning() {
     resetPlanning, injectDefaultWeek, saveCurrentWeekAsDefault,
   } = usePlanningContext()
 
+  const { magasinActif, getDernierePrixObs } = useMagasinContext()
+
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmInject, setConfirmInject] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -271,6 +275,60 @@ function Planning() {
     plats.forEach(p => names.add(p.nom))
     return [...names].sort((a, b) => a.localeCompare(b, 'fr'))
   }, [ingredientSuggestions, plats])
+
+  const estimation = useMemo(() => {
+    const ingredientsMap = {}
+    for (const jour of semaine) {
+      for (const repas of ['midi', 'soir']) {
+        const platId = jour[repas]
+        const delta = jour[`${repas}Delta`] ?? { excluded: [], overrides: {}, extras: [] }
+        if (!platId) continue
+        const plat = plats.find(p => p.id === platId)
+        if (!plat) continue
+        for (const ing of plat.ingredients) {
+          if (delta.excluded.includes(ing.id)) continue
+          const key = ing.nom.toLowerCase()
+          const qty = Number(delta.overrides[ing.id]?.quantite ?? ing.quantite)
+          const unite = delta.overrides[ing.id]?.unite ?? ing.unite
+          if (!ingredientsMap[key]) ingredientsMap[key] = { nom: ing.nom, quantite: 0, unite }
+          ingredientsMap[key].quantite += qty
+        }
+        for (const extra of delta.extras) {
+          const key = extra.nom.toLowerCase()
+          if (!ingredientsMap[key]) ingredientsMap[key] = { nom: extra.nom, quantite: 0, unite: extra.unite }
+          ingredientsMap[key].quantite += Number(extra.quantite) || 0
+        }
+      }
+    }
+    for (const key of ['petitDejeuner', 'achatsPonctuels', 'alicya']) {
+      for (const ing of espacesLibres[key]) {
+        if (ing.platId) {
+          const plat = plats.find(p => p.id === ing.platId)
+          if (plat) {
+            const multiplier = Number(ing.quantite) || 1
+            for (const platIng of plat.ingredients) {
+              const mapKey = platIng.nom.toLowerCase()
+              if (!ingredientsMap[mapKey]) ingredientsMap[mapKey] = { nom: platIng.nom, quantite: 0, unite: platIng.unite }
+              ingredientsMap[mapKey].quantite += Number(platIng.quantite) * multiplier
+            }
+          }
+        } else {
+          const mapKey = ing.nom.toLowerCase()
+          if (!ingredientsMap[mapKey]) ingredientsMap[mapKey] = { nom: ing.nom, quantite: 0, unite: ing.unite }
+          ingredientsMap[mapKey].quantite += Number(ing.quantite) || 0
+        }
+      }
+    }
+    let total = 0, nbEstimes = 0, nbSansPrix = 0
+    for (const item of Object.values(ingredientsMap)) {
+      const obs = getDernierePrixObs(magasinActif, item.nom)
+      const qty = item.quantite > 0 ? item.quantite : 1
+      const { cout, estimable } = coutIngredient(qty, item.unite, obs)
+      if (estimable && cout != null) { total += cout; nbEstimes += 1 }
+      else nbSansPrix += 1
+    }
+    return { total, nbEstimes, nbSansPrix, nbTotal: Object.keys(ingredientsMap).length }
+  }, [semaine, espacesLibres, plats, magasinActif, getDernierePrixObs])
 
   function toggleSlot(key) {
     setOpenSlots(prev => ({ ...prev, [key]: !prev[key] }))
@@ -344,6 +402,26 @@ function Planning() {
         <p className="chip mb-1.5">Planification</p>
         <h1 className="text-3xl font-extrabold tracking-tight ink">Planning</h1>
       </div>
+
+      {/* Estimation du coût de la semaine */}
+      {estimation.nbTotal > 0 && estimation.nbEstimes > 0 && (
+        <div className="glass sheen px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl accent-soft-bg flex items-center justify-center shrink-0">
+            <Wallet size={18} className="accent-text" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold ink-3 uppercase tracking-widest">Estimation · {magasinActif}</p>
+            <p className="text-xs ink-3">
+              {estimation.nbEstimes} article{estimation.nbEstimes > 1 ? 's' : ''} estimé{estimation.nbEstimes > 1 ? 's' : ''}
+              {estimation.nbSansPrix > 0 && <span className="ink-4"> · {estimation.nbSansPrix} sans prix connu</span>}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-2xl font-extrabold ink tabular-nums mono">≈ {estimation.total.toFixed(2)} €</p>
+            {estimation.nbSansPrix > 0 && <p className="text-[10px] ink-4">hors articles sans prix</p>}
+          </div>
+        </div>
+      )}
 
       {/* La Semaine */}
       <section>
