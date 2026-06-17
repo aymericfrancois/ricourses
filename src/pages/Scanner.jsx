@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
   AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
-  Store, Check,
+  Store, Check, Share2,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -151,6 +151,7 @@ function parserTicket(texte) {
             nom: seg.name.toUpperCase(),
             prix: seg.price,
             prixBase: seg.price,
+            nombre: 1,
             quantite: qtyInfo?.quantite ?? null,
             unite: qtyInfo?.unite ?? null,
             matchedNom: null,
@@ -170,6 +171,7 @@ function parserTicket(texte) {
     let cleanedName
 
     let finalPrix = prix
+    let finalNombre = 1   // nombre d'exemplaires achetés (le "2" de "2 X")
 
     if (isMultiplierLine) {
       // Format Leclerc d'un article multiple :
@@ -189,10 +191,12 @@ function parserTicket(texte) {
       const prevHasValidPrice = /\d{1,4}[,.]\d{2}(?!\d)/.test(prevLine)
 
       if (prevHasValidPrice && articles.length > 0) {
-        // Cas A : l'article est déjà dans la liste → on remplace son prix par le total.
+        // Cas A : l'article est déjà dans la liste → on remplace son prix par le total
+        // et on note le nombre d'exemplaires (la contenance unitaire reste inchangée).
         const last = articles[articles.length - 1]
         last.prix = totalLigne
         last.prixBase = totalLigne
+        last.nombre = qty
         continue
       }
 
@@ -206,6 +210,7 @@ function parserTicket(texte) {
         .replace(/\s+/g, ' ')
         .trim()
       finalPrix = totalLigne
+      finalNombre = qty
     } else {
       const firstPriceIndex = allPrices[0].index
       const rawName = trimmed.slice(0, firstPriceIndex)
@@ -233,6 +238,7 @@ function parserTicket(texte) {
       nom: cleanedName.toUpperCase(),
       prix: finalPrix,
       prixBase: finalPrix,
+      nombre: finalNombre,
       quantite: qtyInfo?.quantite ?? null,
       unite: qtyInfo?.unite ?? null,
       matchedNom: null,
@@ -438,6 +444,7 @@ function Scanner() {
   const [articleQtyUnite, setArticleQtyUnite] = useState({})
   const [rawOcrText, setRawOcrText] = useState('')
   const [totalTicketOfficiel, setTotalTicketOfficiel] = useState(null)
+  const [tricountCopie, setTricountCopie] = useState(false)
   // Date du ticket (YYYY-MM-DD), éditable. Défaut = aujourd'hui.
   const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
   const [storeOpen, setStoreOpen] = useState(false)
@@ -518,14 +525,19 @@ function Scanner() {
         initialSplits[a.id] = a.matchedNom
           ? (getHistoriqueSplits(a.matchedNom) ?? getSplit(a.matchedNom))
           : 'both'
-        // Pré-remplir qty/unite depuis l'article parsé ou dernière obs connue
+        // Pré-remplir nombre/contenance/unite depuis l'article parsé ou dernière obs connue
+        const nombre = String(a.nombre ?? 1)
         if (a.quantite != null) {
-          initialQtyUnite[a.id] = { quantite: String(a.quantite), unite: a.unite ?? '' }
+          initialQtyUnite[a.id] = { nombre, quantite: String(a.quantite), unite: a.unite ?? '' }
         } else if (a.matchedNom) {
           const obs = getDernierePrixObs(magasinActif, a.matchedNom)
           if (obs?.quantite != null) {
-            initialQtyUnite[a.id] = { quantite: String(obs.quantite), unite: obs.unite ?? '' }
+            initialQtyUnite[a.id] = { nombre, quantite: String(obs.quantite), unite: obs.unite ?? '' }
+          } else {
+            initialQtyUnite[a.id] = { nombre, quantite: '', unite: '' }
           }
+        } else {
+          initialQtyUnite[a.id] = { nombre, quantite: '', unite: '' }
         }
       })
 
@@ -562,11 +574,16 @@ function Scanner() {
     const histEntries = matched.map(a => ({ ingredient_nom: a.matchedNom, split_choisi: articleSplits[a.id] ?? 'both' }))
     const prixEntries = matched.map(a => {
       const qtyUnite = articleQtyUnite[a.id]
+      const contenance = qtyUnite?.quantite ? parseFloat(qtyUnite.quantite) : null
+      const nombre = qtyUnite?.nombre ? parseFloat(qtyUnite.nombre) : 1
+      // Quantité totale = nombre d'exemplaires × contenance unitaire (ex: 2 × 850 g = 1700 g)
+      // → le prix normalisé (€/kg) reste correct même pour un achat multiple.
+      const quantiteTotale = contenance != null ? Number((nombre * contenance).toFixed(3)) : null
       return {
         ingredient_nom: a.matchedNom,
         prix: a.prix,
         prixBase: a.prixBase ?? a.prix,
-        quantite: qtyUnite?.quantite ? parseFloat(qtyUnite.quantite) : null,
+        quantite: quantiteTotale,
         unite: qtyUnite?.unite || null,
       }
     })
@@ -614,6 +631,33 @@ function Scanner() {
     return sum
   }, 0)
   const partAli = totalTicket - partMoi
+
+  // Récapitulatif à partager vers Tricount (ou toute autre app via le partage natif)
+  function texteTricount() {
+    return [
+      `🛒 Courses ${magasinActif} — ${dateTicket}`,
+      `Total : ${totalTicket.toFixed(2)} €`,
+      `👦 Moi : ${partMoi.toFixed(2)} €`,
+      `👩 Ali : ${partAli.toFixed(2)} €`,
+    ].join('\n')
+  }
+
+  async function partagerTricount() {
+    const texte = texteTricount()
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Courses ${magasinActif}`, text: texte })
+        return
+      } catch {
+        // partage annulé ou indisponible → on retombe sur le presse-papier
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(texte)
+      setTricountCopie(true)
+      setTimeout(() => setTricountCopie(false), 2000)
+    } catch { /* rien */ }
+  }
 
   // ---- ÉTAPE 1 : Capture + Loading ----
   if (step === 'capture' || step === 'loading') {
@@ -841,16 +885,27 @@ function Scanner() {
                     <div className="flex items-center gap-1.5 mt-1">
                       <input
                         type="number"
+                        min="1"
+                        step="1"
+                        title="Nombre d'exemplaires"
+                        placeholder="1"
+                        value={articleQtyUnite[article.id]?.nombre ?? ''}
+                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], nombre: e.target.value, quantite: prev[article.id]?.quantite ?? '', unite: prev[article.id]?.unite ?? '' } }))}
+                        className="w-12 rounded-lg border border-white/70 bg-white/60 px-1.5 py-0.5 text-xs ink text-center focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+                      />
+                      <span className="text-xs ink-3">×</span>
+                      <input
+                        type="number"
                         min="0"
                         step="any"
                         placeholder="Qté"
                         value={articleQtyUnite[article.id]?.quantite ?? ''}
-                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], quantite: e.target.value, unite: prev[article.id]?.unite ?? '' } }))}
+                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], quantite: e.target.value, nombre: prev[article.id]?.nombre ?? '1', unite: prev[article.id]?.unite ?? '' } }))}
                         className="w-16 rounded-lg border border-white/70 bg-white/60 px-2 py-0.5 text-xs ink text-center focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
                       />
                       <select
                         value={articleQtyUnite[article.id]?.unite ?? ''}
-                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], unite: e.target.value, quantite: prev[article.id]?.quantite ?? '' } }))}
+                        onChange={e => setArticleQtyUnite(prev => ({ ...prev, [article.id]: { ...prev[article.id], unite: e.target.value, quantite: prev[article.id]?.quantite ?? '', nombre: prev[article.id]?.nombre ?? '1' } }))}
                         className="rounded-lg border border-white/70 bg-white/60 px-1.5 py-0.5 text-xs ink focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
                       >
                         <option value="">unité</option>
@@ -991,6 +1046,16 @@ function Scanner() {
               <p className="text-[10px] text-pink-400 mt-0.5">{nbAli} solo + {nbBoth} partagés</p>
             </div>
           </div>
+          <button
+            onClick={partagerTricount}
+            className="mt-3 w-full magasin-grad-bg rounded-xl py-2.5 text-sm font-bold flex items-center justify-center gap-2 shadow-sm active:scale-[0.99] transition-transform"
+          >
+            {tricountCopie ? (
+              <><Check size={16} /> Récap copié !</>
+            ) : (
+              <><Share2 size={16} /> Envoyer vers Tricount</>
+            )}
+          </button>
         </div>
         </div>
       </div>
