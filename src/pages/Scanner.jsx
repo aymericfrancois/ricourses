@@ -169,33 +169,39 @@ function parserTicket(texte) {
 
     let cleanedName
 
+    let finalPrix = prix
+
     if (isMultiplierLine) {
-      // La ligne "N X p_unit [p_total]" concerne l'article qui la précède immédiatement.
-      // On patche son prix plutôt que de créer un doublon.
+      // La ligne "N X p_ht [p_ttc]" concerne l'article qui la précède.
+      // Deux cas selon que la ligne précédente avait ou non un prix valide :
+      //   Cas A — "ARTICLE 0,98 A" puis "2 X 0,954" : l'article est déjà dans la liste,
+      //            on multiplie son prix unitaire par la quantité.
+      //   Cas B — "ARTICLE" (sans prix) puis "2 X 0,954 0,98" : l'article n'a pas été
+      //            ajouté, on le crée ici avec le total = qty × dernier prix.
       const mQty = trimmed.match(/^\s*(\d+)\s*[xXàÀ*]/)
       const qty = mQty ? parseInt(mQty[1], 10) : 1
-      if (articles.length > 0) {
+      const prevLine = i > 0 ? lines[i - 1].trim() : ''
+      // Vérifie si la ligne précédente contient un prix à exactement 2 décimales
+      const prevHasValidPrice = /\d{1,4}[,.]\d{2}(?!\d)/.test(prevLine)
+
+      if (prevHasValidPrice && articles.length > 0) {
+        // Cas A : multiplier le prix unitaire déjà stocké
         const last = articles[articles.length - 1]
-        if (allPrices.length >= 2) {
-          // "2 X 0,98  1,96" → le total est le dernier prix sur la ligne
-          last.prix = prix
-          last.prixBase = prix
-        } else {
-          // "2 X 0,98" → pas de total explicite, on calcule
-          last.prix = Number((qty * prix).toFixed(2))
-          last.prixBase = Number((qty * prix).toFixed(2))
-        }
+        last.prix = Number((qty * last.prix).toFixed(2))
+        last.prixBase = Number((qty * last.prixBase).toFixed(2))
         continue
       }
-      // Fallback : aucun article précédent → on traite comme un article classique
-      const prevLine = i > 0 ? lines[i - 1].trim() : ''
+
+      // Cas B : créer l'article depuis la ligne de nom précédente
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
-        .replace(/(-?\d{1,4}[,.]\d{2})\s*[A-Za-z]?\s*$/, '')
+        .replace(/^\d{5,}\s*/, '')
         .replace(/\d+\s*[xX×]\s*/g, '')
         .replace(/\s+/g, ' ')
         .replace(/^R\s+(?=[A-ZÀ-Ÿa-zà-ÿ])/, '')
         .trim()
+      // Total = qty × prix unitaire TTC (dernier prix sur la ligne multiplicatrice)
+      finalPrix = Number((qty * prix).toFixed(2))
     } else {
       const firstPriceIndex = allPrices[0].index
       const rawName = trimmed.slice(0, firstPriceIndex)
@@ -221,8 +227,8 @@ function parserTicket(texte) {
     articles.push({
       id: crypto.randomUUID(),
       nom: cleanedName.toUpperCase(),
-      prix,
-      prixBase: prix,
+      prix: finalPrix,
+      prixBase: finalPrix,
       quantite: qtyInfo?.quantite ?? null,
       unite: qtyInfo?.unite ?? null,
       matchedNom: null,
