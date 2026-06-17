@@ -174,13 +174,17 @@ function parserTicket(texte) {
     if (isMultiplierLine) {
       // Format Leclerc d'un article multiple :
       //   "Concombre Bio x1 Esp"   ← ligne NOM (sans prix à 2 décimales)
+      //   ""                       ← LIGNE VIDE (piège !)
       //   "   2 x 0,99€    1,98"   ← ligne MULTIPLICATEUR : prix unitaire + TOTAL
       // Le dernier prix de la ligne est DÉJÀ le total (ne pas le re-multiplier).
       const mQty = trimmed.match(/^\s*(\d+)\s*[xXàÀ*]/)
       const qty = mQty ? parseInt(mQty[1], 10) : 1
       // Total ligne : si 2+ prix présents, le dernier EST le total ; sinon qty × prix unitaire.
       const totalLigne = allPrices.length >= 2 ? prix : Number((qty * prix).toFixed(2))
-      const prevLine = i > 0 ? lines[i - 1].trim() : ''
+      // Remonter en arrière en sautant les lignes vides/courtes
+      let prevIdx = i - 1
+      while (prevIdx >= 0 && lines[prevIdx].trim().length < 3) prevIdx--
+      const prevLine = prevIdx >= 0 ? lines[prevIdx].trim() : ''
       // La ligne précédente avait-elle déjà un prix valide (article déjà ajouté) ?
       const prevHasValidPrice = /\d{1,4}[,.]\d{2}(?!\d)/.test(prevLine)
 
@@ -237,7 +241,14 @@ function parserTicket(texte) {
     })
   }
 
-  return articles
+  // Extraire le total officiel du ticket ("Total 32 articles 78.21")
+  let totalTicketOfficiel = null
+  for (const line of lines) {
+    const m = line.match(/total\s+\d+\s+articles?\s+(\d+[.,]\d{2})/i)
+    if (m) { totalTicketOfficiel = parseFloat(m[1].replace(',', '.')); break }
+  }
+
+  return { articles, totalTicketOfficiel }
 }
 
 // Réduit un mot à sa racine en retirant le pluriel français standard (-s / -x).
@@ -426,6 +437,7 @@ function Scanner() {
   // { [articleId]: { quantite: string, unite: string } }
   const [articleQtyUnite, setArticleQtyUnite] = useState({})
   const [rawOcrText, setRawOcrText] = useState('')
+  const [totalTicketOfficiel, setTotalTicketOfficiel] = useState(null)
   // Date du ticket (YYYY-MM-DD), éditable. Défaut = aujourd'hui.
   const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
   const [storeOpen, setStoreOpen] = useState(false)
@@ -478,7 +490,8 @@ function Scanner() {
       setRawOcrText(result.data.text || '')
 
       // Fusion des doublons (même article scanné 2x sur le ticket Leclerc)
-      const parsed = parserTicket(result.data.text)
+      const { articles: parsed, totalTicketOfficiel } = parserTicket(result.data.text)
+      setTotalTicketOfficiel(totalTicketOfficiel)
       const deduped = []
       const seenNames = {}
       for (const a of parsed) {
@@ -538,6 +551,8 @@ function Scanner() {
     setValidating(false)
     setArticleQtyUnite({})
     setDateTicket(new Date().toISOString().slice(0, 10))
+    setRawOcrText('')
+    setTotalTicketOfficiel(null)
   }
 
   async function handleValider() {
@@ -770,8 +785,16 @@ function Scanner() {
         {/* Debug : texte OCR brut (à retirer une fois le parsing fiable) */}
         {rawOcrText && (
           <details className="glass-sm mb-4 px-3 py-2 text-xs">
-            <summary className="cursor-pointer ink-2 font-semibold select-none">🐞 Texte OCR brut (debug)</summary>
-            <pre className="mt-2 whitespace-pre-wrap break-words ink-3 mono text-[10px] leading-snug max-h-80 overflow-y-auto">{rawOcrText}</pre>
+            <summary className="cursor-pointer ink-2 font-semibold select-none flex items-center justify-between">
+              <span>🐞 Texte OCR brut (debug)</span>
+            </summary>
+            <div className="mt-2 flex justify-end">
+              <button
+                onClick={() => navigator.clipboard.writeText(rawOcrText)}
+                className="text-[10px] ink-3 hover:accent-text transition-colors px-2 py-0.5 rounded-lg border border-white/60 bg-white/50 hover:bg-white/80"
+              >Copier le texte OCR</button>
+            </div>
+            <pre className="mt-1 whitespace-pre-wrap break-words ink-3 mono text-[10px] leading-snug max-h-80 overflow-y-auto">{rawOcrText}</pre>
           </details>
         )}
 
@@ -940,6 +963,15 @@ function Scanner() {
         </div>
 
         <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4" style={{ background: 'rgba(255,255,255,0.96)' }}>
+          {totalTicketOfficiel != null && Math.abs(totalTicketOfficiel - totalTicket) > 0.05 && (
+            <div className="mb-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                Le total du ticket est <strong>{totalTicketOfficiel.toFixed(2)} €</strong> mais Ricourses n'a détecté que <strong>{totalTicket.toFixed(2)} €</strong> ({articlesActifs.length} articles).
+                Il manque peut-être des articles — vérifiez le ticket.
+              </span>
+            </div>
+          )}
           <div className="flex items-stretch gap-4">
             <div className="flex-1">
               <p className="text-[10px] font-bold ink-3 uppercase tracking-widest mb-0.5">Total ticket</p>
