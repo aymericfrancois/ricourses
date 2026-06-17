@@ -632,14 +632,10 @@ function Scanner() {
   }, 0)
   const partAli = totalTicket - partMoi
 
-  // Récapitulatif à partager vers Tricount (ou toute autre app via le partage natif)
+  // Récap Tricount : juste les trois montants séparés par espace (pour coller directement)
+  // Format : "78.21 28.03 43.72"  (total  ali  rico — sans € ni labels)
   function texteTricount() {
-    return [
-      `🛒 Courses ${magasinActif} — ${dateTicket}`,
-      `Total : ${totalTicket.toFixed(2)} €`,
-      `👦 Moi : ${partMoi.toFixed(2)} €`,
-      `👩 Ali : ${partAli.toFixed(2)} €`,
-    ].join('\n')
+    return `${totalTicket.toFixed(2)} ${partAli.toFixed(2)} ${partMoi.toFixed(2)}`
   }
 
   async function partagerTricount() {
