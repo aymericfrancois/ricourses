@@ -1,11 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
-  ShoppingCart, Package, GripVertical, Check, Share2, Eraser, FolderInput, ChevronDown, Wallet,
+  ShoppingCart, Package, Check, Share2, Eraser, FolderInput, ChevronDown, Wallet,
 } from 'lucide-react'
-import {
-  DndContext, DragOverlay, useDroppable, useDraggable,
-  useSensor, useSensors, PointerSensor, TouchSensor,
-} from '@dnd-kit/core'
 import { usePlats } from '../hooks/usePlats'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlanningContext } from '../context/PlanningContext'
@@ -140,22 +136,13 @@ function RayonPicker({ rayons, rayonActuel, onPick }) {
 }
 
 // ---- Ingrédient draggable ----
-// Tout le bandeau est draggable (clic prolongé). Le tap simple coche grâce aux
-// contraintes d'activation des capteurs (distance 8px / délai 250ms).
-// Pas de transform sur la <li> source : c'est le DragOverlay qui suit le curseur.
-function DraggableIngredient({ item, isChecked, onToggle, borderColor, rayons, rayonActuel, onPickRayon }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `ing:${item.nom}`,
-    data: item,
-  })
-
+// Tap simple pour cocher. Le changement de rayon passe par le RayonPicker :
+// pas de drag & drop, qui gênait le scroll sur mobile.
+function IngredientRow({ item, isChecked, onToggle, borderColor, rayons, rayonActuel, onPickRayon }) {
   return (
     <li
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       onClick={onToggle}
-      className={`flex items-center gap-2 px-3 py-2.5 select-none touch-none cursor-grab active:cursor-grabbing transition-colors hover:bg-white/40 ${isChecked ? 'opacity-50' : ''} ${isDragging ? 'opacity-20' : ''}`}
+      className={`flex items-center gap-2 px-3 py-2.5 select-none cursor-pointer transition-colors hover:bg-white/40 ${isChecked ? 'opacity-50' : ''}`}
     >
       <span
         className={`w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${isChecked ? 'border-[color:var(--accent)] accent-bg' : borderColor}`}
@@ -177,28 +164,26 @@ function DraggableIngredient({ item, isChecked, onToggle, borderColor, rayons, r
   )
 }
 
-// ---- Zone droppable (rayon) ----
-function DroppableRayon({ rayonId, label, items, checkedItems, onToggleChecked, isOrphan = false, rayons, onPickRayon }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `rayon:${rayonId}` })
+// ---- Section rayon ----
+function SectionRayon({ label, items, checkedItems, onToggleChecked, isOrphan = false, rayons, onPickRayon }) {
   const sorted = [...items].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
   const isEmpty = items.length === 0
 
   return (
-    <section ref={setNodeRef} className={`rounded-2xl transition-all ${isOver ? 'ring-2 ring-[color:var(--accent)]/50 ring-offset-1' : ''}`}>
-      <h3 className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isOver ? 'accent-text' : isEmpty ? 'ink-4' : 'ink-3'}`}>
+    <section className="rounded-2xl">
+      <h3 className={`text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2 ${isEmpty ? 'ink-4' : 'ink-3'}`}>
         {isOrphan && <Package size={13} />}
         {label}
         <span className="font-normal normal-case opacity-60">({items.length})</span>
-        {isOver && <span className="accent-text font-normal normal-case text-[10px]">← déposer ici</span>}
       </h3>
       {isEmpty ? (
-        <div className={`rounded-xl border-2 border-dashed px-4 py-3 text-center text-xs italic transition-colors ${isOver ? 'border-[color:var(--accent)]/60 accent-text accent-soft-bg' : 'border-white/70 ink-4'}`}>
+        <div className="rounded-xl border-2 border-dashed px-4 py-3 text-center text-xs italic border-white/70 ink-4">
           Aucun ingrédient
         </div>
       ) : (
-        <ul className={`glass sheen divide-y divide-white/40 transition-colors ${isOver ? 'ring-1 ring-[color:var(--accent)]/40' : ''} ${isOrphan ? 'border border-orange-200/70' : ''}`}>
+        <ul className={`glass sheen divide-y divide-white/40 ${isOrphan ? 'border border-orange-200/70' : ''}`}>
           {sorted.map(item => (
-            <DraggableIngredient
+            <IngredientRow
               key={item.nom}
               item={item}
               isChecked={checkedItems.has(item.nom.toLowerCase())}
@@ -253,15 +238,8 @@ function ShoppingList() {
   const { semaine, espacesLibres } = usePlanningContext()
 
   const { checkedItems, toggleChecked, uncheckAll } = useCoursesCoches()
-  const [activeItem, setActiveItem] = useState(null)
   const [toast, setToast] = useState('')
   const [confirmUncheck, setConfirmUncheck] = useState(false)
-  const isDragging = activeItem != null
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
-  )
 
   const magasinCourant = magasins.find(m => m.nom === magasinActif)
   const rayonsOrdonnes = magasinCourant?.rayons.map(r => r.nom) ?? []
@@ -400,20 +378,6 @@ function ShoppingList() {
     }
   }
 
-  function handleDragStart({ active }) {
-    setActiveItem(active.data.current)
-  }
-
-  function handleDragEnd({ active, over }) {
-    setActiveItem(null)
-    if (!over) return
-    const ingNom = active.id.replace(/^ing:/, '')
-    if (over.id.startsWith('rayon:')) {
-      const newRayon = over.id.slice(6)
-      setRayon(ingNom, newRayon)
-    }
-  }
-
   return (
     <main className="max-w-2xl mx-auto px-4 py-6 anim-in">
 
@@ -502,62 +466,46 @@ function ShoppingList() {
           <p className="text-sm text-center leading-relaxed ink-3">Sélectionnez des plats<br />ou ajoutez des ingrédients libres.</p>
         </div>
       ) : (
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="space-y-4">
-            {orphelins.length > 0 && (
-              <DroppableRayon
-                rayonId=""
-                label="📦 Non classés"
-                items={orphelins}
+        <div className="space-y-4">
+          {orphelins.length > 0 && (
+            <SectionRayon
+              label="📦 Non classés"
+              items={orphelins}
+              checkedItems={checkedItems}
+              onToggleChecked={toggleChecked}
+              isOrphan
+              rayons={rayonsOrdonnes}
+              onPickRayon={setRayon}
+            />
+          )}
+
+          {rayonsOrdonnes.map(rayonNom => {
+            const items = grouped[rayonNom] ?? []
+            // Masquer les rayons sans article non-coché.
+            if (items.length === 0) return null
+            return (
+              <SectionRayon
+                key={rayonNom}
+                label={rayonNom}
+                items={items}
                 checkedItems={checkedItems}
                 onToggleChecked={toggleChecked}
-                isOrphan
                 rayons={rayonsOrdonnes}
                 onPickRayon={setRayon}
               />
-            )}
+            )
+          })}
 
-            {rayonsOrdonnes.map(rayonNom => {
-              const items = grouped[rayonNom] ?? []
-              // Hors drag : masquer les rayons sans article non-coché.
-              if (!isDragging && items.length === 0) return null
-              return (
-                <DroppableRayon
-                  key={rayonNom}
-                  rayonId={rayonNom}
-                  label={rayonNom}
-                  items={items}
-                  checkedItems={checkedItems}
-                  onToggleChecked={toggleChecked}
-                  rayons={rayonsOrdonnes}
-                  onPickRayon={setRayon}
-                />
-              )
-            })}
+          {orphelins.length > 0 && (
+            <p className="text-xs ink-3 text-center">
+              Utilisez l&apos;icône <FolderInput size={11} className="inline align-text-bottom" /> pour assigner un rayon à <span className="font-semibold ink-2">{magasinActif}</span>.
+            </p>
+          )}
 
-            {orphelins.length > 0 && (
-              <p className="text-xs ink-3 text-center">
-                Glissez un ingrédient « non classé » vers un rayon pour l&apos;assigner à <span className="font-semibold ink-2">{magasinActif}</span>.
-              </p>
-            )}
-
-            {cochesItems.length > 0 && (
-              <SectionCoches items={cochesItems} onToggleChecked={toggleChecked} />
-            )}
-          </div>
-
-          <DragOverlay>
-            {activeItem && (
-              <div className="flex items-center gap-3 px-4 py-2.5 glass-strong sheen text-sm pointer-events-none">
-                <GripVertical size={14} className="ink-3 shrink-0" />
-                <span className="font-semibold ink flex-1">{activeItem.nom}</span>
-                <span className="ink-3 tabular-nums mono">
-                  {activeItem.quantite > 0 ? `${activeItem.quantite} ${activeItem.unite}` : activeItem.unite}
-                </span>
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
+          {cochesItems.length > 0 && (
+            <SectionCoches items={cochesItems} onToggleChecked={toggleChecked} />
+          )}
+        </div>
       )}
     </main>
   )
