@@ -50,7 +50,33 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const MagasinContext = createContext(null)
 
 export function MagasinProvider({ children }) {
-  const { magasins, moveRayonUp, moveRayonDown, renommerRayon: renommerRayonBase, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
+  const { magasins, ajouterMagasin: ajouterMagasinBase, moveRayonUp, moveRayonDown, renommerRayon: renommerRayonBase, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
+
+  // Wrapper : une enseigne créée à vide afficherait les ~90 ingrédients connus en
+  // « non classés ». On lui pré-assigne donc le mapping par défaut, comme les
+  // enseignes d'origine l'ont reçu au premier lancement.
+  async function ajouterMagasin(nom) {
+    const nouveau = await ajouterMagasinBase(nom)
+    if (!nouveau) return null
+
+    const rayonsDispo = new Set(nouveau.rayons.map(r => r.nom))
+    const mapping = {}
+    for (const [ingNom, rayonNom] of Object.entries(mappingRayons)) {
+      if (rayonsDispo.has(rayonNom)) mapping[ingNom.toLowerCase()] = rayonNom
+    }
+
+    setRayonsParMagasin(prev => ({ ...prev, [nouveau.nom]: mapping }))
+
+    const rows = Object.entries(mapping).map(([ingredient_nom, rayon_nom]) => ({
+      magasin_id: nouveau.id, ingredient_nom, rayon_nom,
+    }))
+    if (rows.length > 0) {
+      const { error } = await supabase.from('ingredient_rayons')
+        .upsert(rows, { onConflict: 'magasin_id,ingredient_nom' })
+      if (error) console.error('ajouterMagasin mapping:', error)
+    }
+    return nouveau
+  }
 
   // Wrapper qui cascade le rename vers ingredient_rayons (rayon_nom est stocké en TEXT, pas en FK)
   function renommerRayon(magasinId, rayonId, nouveauNom) {
@@ -538,7 +564,7 @@ export function MagasinProvider({ children }) {
 
   return (
     <MagasinContext.Provider value={{
-      magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
+      magasins, ajouterMagasin, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
       magasinActif, setMagasinActif,
       rayonsParMagasin, getRayon, setRayon, renommerIngredientDansRayons, supprimerIngredientDansRayons,
       standaloneIngredients, ajouterIngredientStandalone,

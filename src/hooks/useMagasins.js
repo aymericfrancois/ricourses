@@ -5,6 +5,10 @@ import { supabase } from '../supabaseClient'
 const STORAGE_KEY = 'ricourses_magasins'
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Les 3 enseignes de départ partagent la même liste de rayons : on la réutilise
+// telle quelle pour toute nouvelle enseigne (l'utilisateur la réorganise ensuite).
+export const RAYONS_PAR_DEFAUT = initialMagasins[0].rayons.map(r => r.nom)
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -85,6 +89,42 @@ export function useMagasins() {
     }
     fetchMagasins()
   }, [])
+
+  // Ajoute une enseigne + ses rayons par défaut. Renvoie le magasin créé
+  // ({ id, nom, rayons }) ou null si échec / doublon.
+  async function ajouterMagasin(nom) {
+    const trimmed = nom.trim()
+    if (!trimmed) return null
+    if (magasins.some(m => m.nom.toLowerCase() === trimmed.toLowerCase())) return null
+
+    const { data: magasinData, error: magasinErr } = await supabase
+      .from('magasins')
+      .insert({ nom: trimmed })
+      .select('id')
+      .single()
+
+    if (magasinErr) { console.error('ajouterMagasin:', magasinErr); return null }
+
+    const magasinId = magasinData.id
+    const { data: rayonsData, error: rayonsErr } = await supabase
+      .from('rayons')
+      .insert(RAYONS_PAR_DEFAUT.map((nomRayon, i) => ({
+        magasin_id: magasinId, nom: nomRayon, position: i,
+      })))
+      .select('id, nom, position')
+
+    if (rayonsErr) console.error('ajouterMagasin rayons:', rayonsErr)
+
+    const nouveau = {
+      id: magasinId,
+      nom: trimmed,
+      rayons: (rayonsData ?? [])
+        .sort((a, b) => a.position - b.position)
+        .map(r => ({ id: r.id, nom: r.nom })),
+    }
+    setMagasins(prev => [...prev, nouveau].sort((a, b) => a.nom.localeCompare(b.nom, 'fr')))
+    return nouveau
+  }
 
   function moveRayonUp(magasinId, rayonIdx) {
     if (rayonIdx === 0) return
@@ -195,5 +235,5 @@ export function useMagasins() {
     })
   }
 
-  return { magasins, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons }
+  return { magasins, ajouterMagasin, moveRayonUp, moveRayonDown, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons }
 }

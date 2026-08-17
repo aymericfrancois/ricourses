@@ -52,5 +52,23 @@
       { "id": "leclerc-r11", "nom": "Bio & Végétarien" },
       { "id": "leclerc-r12", "nom": "Entretien & Hygiène" }
     ]
+  },
+  {
+    "id": "magasin-aldi",
+    "nom": "Aldi",
+    "rayons": [
+      { "id": "aldi-r1",  "nom": "Fruits & Légumes" },
+      { "id": "aldi-r2",  "nom": "Boulangerie" },
+      { "id": "aldi-r3",  "nom": "Boucherie & Charcuterie" },
+      { "id": "aldi-r4",  "nom": "Poissonnerie" },
+      { "id": "aldi-r5",  "nom": "Produits Laitiers & Œufs" },
+      { "id": "aldi-r6",  "nom": "Épicerie Salée" },
+      { "id": "aldi-r7",  "nom": "Épicerie Sucrée" },
+      { "id": "aldi-r8",  "nom": "Conserves" },
+      { "id": "aldi-r9",  "nom": "Surgelés" },
+      { "id": "aldi-r10", "nom": "Boissons" },
+      { "id": "aldi-r11", "nom": "Bio & Végétarien" },
+      { "id": "aldi-r12", "nom": "Entretien & Hygiène" }
+    ]
   }
 ]

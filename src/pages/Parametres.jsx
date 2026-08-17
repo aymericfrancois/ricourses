@@ -480,7 +480,7 @@ function Parametres() {
     fusionnerIngredients,
   } = usePlats()
   const {
-    magasins, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
+    magasins, ajouterMagasin, renommerRayon, ajouterRayon, supprimerRayon, reorderRayons,
     magasinActif, setMagasinActif, getRayon, setRayon,
     renommerIngredientDansRayons, supprimerIngredientDansRayons,
     standaloneIngredients, ajouterIngredientStandalone,
@@ -527,6 +527,29 @@ function Parametres() {
 
   // --- État onglet Rayons ---
   const [nouveauRayon, setNouveauRayon] = useState('')
+  const [nouveauMagasin, setNouveauMagasin] = useState('')
+  const [ajoutMagasinEnCours, setAjoutMagasinEnCours] = useState(false)
+  const [erreurMagasin, setErreurMagasin] = useState('')
+
+  async function handleAjouterMagasin(e) {
+    e.preventDefault()
+    const nom = nouveauMagasin.trim()
+    if (!nom || ajoutMagasinEnCours) return
+    setErreurMagasin('')
+    setAjoutMagasinEnCours(true)
+    const cree = await ajouterMagasin(nom)
+    setAjoutMagasinEnCours(false)
+    if (!cree) {
+      setErreurMagasin(
+        magasins.some(m => m.nom.toLowerCase() === nom.toLowerCase())
+          ? 'Cette enseigne existe déjà.'
+          : "Échec de l'ajout. Vérifiez la connexion."
+      )
+      return
+    }
+    setNouveauMagasin('')
+    setMagasinActif(cree.nom)
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -1154,6 +1177,26 @@ function Parametres() {
                 </button>
               ))}
             </div>
+
+            <form onSubmit={handleAjouterMagasin} className="mt-3 flex gap-2 md:flex-col">
+              <input
+                type="text"
+                value={nouveauMagasin}
+                onChange={e => { setNouveauMagasin(e.target.value); setErreurMagasin('') }}
+                placeholder="Nouvelle enseigne"
+                className={`flex-1 min-w-0 ${inputSm}`}
+              />
+              <button
+                type="submit"
+                disabled={!nouveauMagasin.trim() || ajoutMagasinEnCours}
+                className={`${btnPrimarySm} justify-center disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                <Plus size={14} />{ajoutMagasinEnCours ? 'Ajout…' : 'Ajouter'}
+              </button>
+            </form>
+            {erreurMagasin && (
+              <p className="mt-1.5 text-xs text-red-500">{erreurMagasin}</p>
+            )}
           </section>
 
           {magasinCourant && (
