@@ -128,6 +128,7 @@ export function MagasinProvider({ children }) {
     if (n.includes('lidl')) grad = 'linear-gradient(135deg, #0050AA, #FFE500, #E60A14)'
     else if (n.includes('carrefour')) grad = 'linear-gradient(135deg, #004E9F, #ffffff, #E30613)'
     else if (n.includes('leclerc')) grad = 'linear-gradient(135deg, #0061AF, #ffffff, #FF6600)'
+    else if (n.includes('aldi')) grad = 'linear-gradient(135deg, #00549F, #FF9E1B, #E30613)'
     if (grad) document.documentElement.style.setProperty('--magasin-grad', grad)
     else document.documentElement.style.removeProperty('--magasin-grad')
   }, [magasinActif])

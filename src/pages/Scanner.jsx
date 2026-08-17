@@ -50,6 +50,18 @@ function normUnite(u) {
 // Pour un article pesé ("0,650 kg x 2,99 €/kg") c'est le vrai poids qui est capté.
 // Retourne { quantite, unite } ou null.
 function extraireQtyUnite(ligne) {
+  // Pattern A0 : pack multiplié dans le NOM — "2X100G" (Aldi), "6 x 1,5L"
+  // → contenance totale (2 × 100 g = 200 g). Doit passer AVANT le Pattern A,
+  // qui ne verrait que le "100G" et sous-estimerait la contenance de moitié.
+  const mA0 = ligne.match(/(\d{1,2})\s*[x×]\s*(\d+(?:[,.]\d+)?)\s*(kgs?|grammes?|grs?|g|litres?|cl|ml|l)\b/i)
+  if (mA0) {
+    const u = normUnite(mA0[3])
+    if (u) {
+      const total = parseInt(mA0[1], 10) * parseFloat(mA0[2].replace(',', '.'))
+      return { quantite: Number(total.toFixed(3)), unite: u }
+    }
+  }
+
   // Pattern A : poids/volume absolu — "850G", "0,540 KG", "20 CL", "1L"
   // Nombre directement suivi (espace optionnel) d'une unité. Décimale optionnelle.
   const mA = ligne.match(/(\d+(?:[,.]\d+)?)\s*(kgs?|grammes?|grs?|g|litres?|cl|ml|l)\b/i)
@@ -169,6 +181,10 @@ function parserTicket(texte) {
     if (prix <= 0 || prix > 500) continue
 
     let cleanedName
+    // Nom AVANT nettoyage : le nettoyage retire les "2X" (utile pour l'affichage,
+    // destructeur pour la contenance d'un pack "2X100G"). On garde donc l'original
+    // pour l'extraction quantité/unité.
+    let nomAvantNettoyage = ''
 
     let finalPrix = prix
     let finalNombre = 1   // nombre d'exemplaires achetés (le "2" de "2 X")
@@ -201,6 +217,7 @@ function parserTicket(texte) {
       }
 
       // Cas B : la ligne précédente était le NOM seul → on crée l'article ici.
+      nomAvantNettoyage = prevLine
       cleanedName = prevLine
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/^\d{5,}\s*/, '')
@@ -214,6 +231,7 @@ function parserTicket(texte) {
     } else {
       const firstPriceIndex = allPrices[0].index
       const rawName = trimmed.slice(0, firstPriceIndex)
+      nomAvantNettoyage = rawName
       cleanedName = rawName
         .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
         .replace(/^\d{5,}\s*/, '')
@@ -229,10 +247,12 @@ function parserTicket(texte) {
     if (!/[a-zA-ZÀ-ÿ]{3}/.test(cleanedName)) continue
     if (!/[aeiouAEIOUàâäéèêëîïôöùûüÀÂÄÉÈÊËÎÏÔÖÙÛÜ]/.test(cleanedName)) continue
 
-    // cleanedName = portion article avant le prix (ex: "Skyr nature 850g").
-    // raw inclut les colonnes du ticket (P.U.EUR, Qté, EUR) qui peuvent parasiter.
-    // On cherche d'abord dans cleanedName, fallback sur raw.
-    const qtyInfo = extraireQtyUnite(cleanedName) ?? extraireQtyUnite(raw)
+    // nomAvantNettoyage conserve les packs "2X100G" ; cleanedName est la version
+    // nettoyée (ex: "Skyr nature 850g") ; raw inclut les colonnes du ticket
+    // (P.U.EUR, Qté, EUR) qui peuvent parasiter → ultime recours.
+    const qtyInfo = extraireQtyUnite(nomAvantNettoyage)
+      ?? extraireQtyUnite(cleanedName)
+      ?? extraireQtyUnite(raw)
     articles.push({
       id: crypto.randomUUID(),
       nom: cleanedName.toUpperCase(),
@@ -247,14 +267,49 @@ function parserTicket(texte) {
     })
   }
 
-  // Extraire le total officiel du ticket ("Total 32 articles 78.21")
-  let totalTicketOfficiel = null
-  for (const line of lines) {
-    const m = line.match(/total\s+\d+\s+articles?\s+(\d+[.,]\d{2})/i)
-    if (m) { totalTicketOfficiel = parseFloat(m[1].replace(',', '.')); break }
-  }
+  return { articles, totalTicketOfficiel: extraireTotalOfficiel(lines) }
+}
 
-  return { articles, totalTicketOfficiel }
+// Retire uniquement les accents (sans toucher aux chiffres ni aux virgules
+// décimales, contrairement à normaliser()) : "À PAYER" → "A PAYER".
+function sansAccents(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+// Motifs de total officiel, du plus spécifique au plus générique.
+// Le 1er motif qui matche gagne, ce qui évite qu'un "TOTAL TVA" l'emporte sur le
+// vrai total. "Nombre de lignes d'articles 33" ne matche aucun motif : pas de
+// décimale, donc jamais confondu avec un montant.
+// \D* (et non \D{0,n}) car les tickets alignent le montant en colonne : il peut y
+// avoir 20+ espaces entre le libellé et le prix.
+const MOTIFS_TOTAL = [
+  // Leclerc : "Total 32 articles 78.21"
+  { re: /total\s+\d+\s+articles?\D*(\d{1,4}[.,]\d{2})/i, garde: false },
+  // Aldi / Lidl : "À PAYER                       83,11 €"
+  { re: /\ba\s*payer\b\D*(\d{1,4}[.,]\d{2})/i, garde: false },
+  { re: /\bmontant\s+(?:du|a\s*payer)\b\D*(\d{1,4}[.,]\d{2})/i, garde: false },
+  // Filet de sécurité générique : "TOTAL 83,11". Sensible aux faux amis → gardé.
+  { re: /\btotal\b\D*(\d{1,4}[.,]\d{2})/i, garde: true },
+]
+
+// Lignes contenant "total" sans être LE total du ticket. N'est appliqué qu'au
+// motif générique : les motifs explicites ("à payer") doivent rester valides même
+// sur un "TOTAL À PAYER PAR CARTE".
+const TOTAL_FAUX_AMIS = ['tva', 'sous', 'espece', 'rendu', 'remise', 'economie']
+
+function extraireTotalOfficiel(lines) {
+  for (const { re, garde } of MOTIFS_TOTAL) {
+    for (const line of lines) {
+      const plat = sansAccents(line)
+      if (garde && TOTAL_FAUX_AMIS.some(kw => plat.toLowerCase().includes(kw))) continue
+      const m = plat.match(re)
+      if (m) {
+        const val = parseFloat(m[1].replace(',', '.'))
+        if (val > 0 && val <= 5000) return val
+      }
+    }
+  }
+  return null
 }
 
 // Réduit un mot à sa racine en retirant le pluriel français standard (-s / -x).
