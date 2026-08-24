@@ -1194,8 +1194,12 @@ function Parametres() {
                 <Plus size={14} />{ajoutMagasinEnCours ? 'Ajout…' : 'Ajouter'}
               </button>
             </form>
-            {erreurMagasin && (
+            {erreurMagasin ? (
               <p className="mt-1.5 text-xs text-red-500">{erreurMagasin}</p>
+            ) : magasinActif && (
+              <p className="mt-1.5 text-xs ink-4 leading-snug">
+                Rayons et classement copiés depuis <span className="font-semibold ink-3">{magasinActif}</span>.
+              </p>
             )}
           </section>
 

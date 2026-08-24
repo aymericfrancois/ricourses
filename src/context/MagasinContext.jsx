@@ -52,17 +52,31 @@ const MagasinContext = createContext(null)
 export function MagasinProvider({ children }) {
   const { magasins, ajouterMagasin: ajouterMagasinBase, moveRayonUp, moveRayonDown, renommerRayon: renommerRayonBase, ajouterRayon, supprimerRayon, reorderRayons } = useMagasins()
 
-  // Wrapper : une enseigne créée à vide afficherait les ~90 ingrédients connus en
-  // « non classés ». On lui pré-assigne donc le mapping par défaut, comme les
-  // enseignes d'origine l'ont reçu au premier lancement.
-  async function ajouterMagasin(nom) {
-    const nouveau = await ajouterMagasinBase(nom)
+  // Wrapper : une enseigne créée à vide afficherait tous les ingrédients connus en
+  // « non classés ». On la calque donc sur une enseigne existante (par défaut
+  // l'enseigne active) : mêmes rayons, même classement des ingrédients.
+  // On NE part PAS de mappingRayons.json : ses rayons cibles sont ceux du seed
+  // d'origine, que l'utilisateur a pu renommer entièrement. Le JSON ne sert que
+  // de secours quand il n'existe encore aucune enseigne.
+  async function ajouterMagasin(nom, sourceNom = magasinActif) {
+    const source = magasins.find(m => m.nom === sourceNom) ?? magasins[0]
+    const rayonsNoms = source?.rayons.map(r => r.nom) ?? []
+
+    const nouveau = await ajouterMagasinBase(nom, rayonsNoms)
     if (!nouveau) return null
 
+    // Mapping de référence : celui de la source, sinon le JSON de seed.
+    const mappingSource = (source && rayonsParMagasin[source.nom])
+      ? rayonsParMagasin[source.nom]
+      : Object.fromEntries(
+          Object.entries(mappingRayons).map(([ing, r]) => [ing.toLowerCase(), r])
+        )
+
+    // Ne garder que les ingrédients dont le rayon existe dans la nouvelle enseigne.
     const rayonsDispo = new Set(nouveau.rayons.map(r => r.nom))
     const mapping = {}
-    for (const [ingNom, rayonNom] of Object.entries(mappingRayons)) {
-      if (rayonsDispo.has(rayonNom)) mapping[ingNom.toLowerCase()] = rayonNom
+    for (const [ingNom, rayonNom] of Object.entries(mappingSource)) {
+      if (rayonsDispo.has(rayonNom)) mapping[ingNom] = rayonNom
     }
 
     setRayonsParMagasin(prev => ({ ...prev, [nouveau.nom]: mapping }))

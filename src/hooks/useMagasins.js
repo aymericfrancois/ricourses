@@ -90,12 +90,16 @@ export function useMagasins() {
     fetchMagasins()
   }, [])
 
-  // Ajoute une enseigne + ses rayons par défaut. Renvoie le magasin créé
-  // ({ id, nom, rayons }) ou null si échec / doublon.
-  async function ajouterMagasin(nom) {
+  // Ajoute une enseigne avec la liste de rayons fournie (noms, dans l'ordre).
+  // Renvoie le magasin créé ({ id, nom, rayons }) ou null si échec / doublon.
+  async function ajouterMagasin(nom, rayonsNoms) {
     const trimmed = nom.trim()
     if (!trimmed) return null
     if (magasins.some(m => m.nom.toLowerCase() === trimmed.toLowerCase())) return null
+
+    const noms = (rayonsNoms?.length ? rayonsNoms : RAYONS_PAR_DEFAUT)
+      .map(n => n.trim())
+      .filter(Boolean)
 
     const { data: magasinData, error: magasinErr } = await supabase
       .from('magasins')
@@ -108,7 +112,7 @@ export function useMagasins() {
     const magasinId = magasinData.id
     const { data: rayonsData, error: rayonsErr } = await supabase
       .from('rayons')
-      .insert(RAYONS_PAR_DEFAUT.map((nomRayon, i) => ({
+      .insert(noms.map((nomRayon, i) => ({
         magasin_id: magasinId, nom: nomRayon, position: i,
       })))
       .select('id, nom, position')
