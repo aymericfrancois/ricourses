@@ -214,7 +214,7 @@ function SplitMini({ value, onChange }) {
 
 // ---- Tag ingrédient draggable + actions ----
 // ---- Sélecteur de rayon (popover sur clic) ----
-function RayonPicker({ rayons, rayonActuel, onPick }) {
+function RayonPicker({ rayons, rayonActuel, onPick, onOpenChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -224,6 +224,11 @@ function RayonPicker({ rayons, rayonActuel, onPick }) {
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [open])
+
+  // La ligne parente porte un backdrop-filter, qui crée un contexte d'empilement :
+  // le z-index du popover y est confiné et les lignes suivantes le recouvrent.
+  // On prévient donc le parent pour qu'il se hisse au-dessus de ses voisines.
+  useEffect(() => { onOpenChange?.(open) }, [open, onOpenChange])
 
   // Empêche le drag de démarrer
   const stop = e => e.stopPropagation()
@@ -263,6 +268,7 @@ function RayonPicker({ rayons, rayonActuel, onPick }) {
 
 function IngredientTag({ nom, isAssigned, onRename, onDelete, rayons }) {
   const [isRenaming, setIsRenaming] = useState(false)
+  const [pickerOuvert, setPickerOuvert] = useState(false)
   const [newNom, setNewNom] = useState(nom)
   const submittedRef = useRef(false)
   const { getSplit, setSplit, getRayon, setRayon } = useMagasinContext()
@@ -306,12 +312,19 @@ function IngredientTag({ nom, isAssigned, onRename, onDelete, rayons }) {
       style={style}
       className={`flex items-center gap-2 pl-3 pr-1.5 py-2 rounded-lg border bg-white/60 backdrop-blur-sm shadow-sm select-none transition-opacity ${
         isDragging ? 'opacity-50' : ''
-      } ${isAssigned ? 'border-white/70' : 'border-orange-200/70'}`}
+      } ${isAssigned ? 'border-white/70' : 'border-orange-200/70'} ${
+        pickerOuvert ? 'relative z-50' : ''
+      }`}
     >
       <span className={`flex-1 text-sm truncate min-w-0 ${isAssigned ? 'ink-2' : 'text-orange-600'}`}>{nom}</span>
       <SplitMini value={getSplit(nom)} onChange={val => setSplit(nom, val)} />
       {rayons && rayons.length > 0 && (
-        <RayonPicker rayons={rayons} rayonActuel={getRayon(nom)} onPick={r => setRayon(nom, r)} />
+        <RayonPicker
+          rayons={rayons}
+          rayonActuel={getRayon(nom)}
+          onPick={r => setRayon(nom, r)}
+          onOpenChange={setPickerOuvert}
+        />
       )}
       <button
         type="button"
