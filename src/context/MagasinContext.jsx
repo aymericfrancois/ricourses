@@ -441,6 +441,24 @@ export function MagasinProvider({ children }) {
     if (error) console.error('enregistrerPrix:', error)
   }
 
+  // ---- Détection de doublon (page Scanner, avant validation) ----
+  // Heuristique volontairement simple : même enseigne + même date de ticket.
+  // Ne filtre pas par montant (un OCR raté peut donner un total légèrement
+  // différent pour LE MÊME ticket) — on affiche les totaux, la décision reste
+  // humaine ("Remplacer" vs "Créer quand même").
+  async function chercherTicketsExistants(magasinNom, dateTicket) {
+    if (!magasinNom || !dateTicket) return []
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('id, magasin_nom, date_ticket, total_officiel, total_calcule, nb_articles, created_at')
+      .eq('magasin_nom', magasinNom)
+      .eq('date_ticket', dateTicket)
+      .order('created_at', { ascending: false })
+
+    if (error) { console.error('chercherTicketsExistants:', error); return [] }
+    return data ?? []
+  }
+
   // ---- Historique tickets (page /historique) ----
   // Contrairement à enregistrerPrix (qui ne garde QUE les articles reconnus, pour
   // l'estimateur/comparateur de prix), on stocke ici TOUS les articles validés du
@@ -448,9 +466,19 @@ export function MagasinProvider({ children }) {
   // articles: [{ nom, matchedNom, prix, prixBase, nombre, quantite, unite, split }]
   // imageFile: File optionnel (photo du ticket) — l'échec d'upload ne bloque pas
   // l'enregistrement du ticket (le bucket "tickets-images" peut ne pas exister).
-  async function enregistrerTicket({ dateTicket, totalOfficiel, articles, imageFile }) {
+  // remplacerTicketId : si fourni (l'utilisateur a choisi "Remplacer" sur un
+  // doublon détecté), l'ancien ticket est supprimé avant d'insérer le nouveau —
+  // ses ticket_articles partent en cascade (ON DELETE CASCADE). C'est le seul
+  // mécanisme d'"édition" d'un ticket déjà enregistré : pas d'édition ligne à
+  // ligne d'un ticket existant, on le remplace entièrement par la version corrigée.
+  async function enregistrerTicket({ dateTicket, totalOfficiel, articles, imageFile, remplacerTicketId }) {
     const magasin = magasins.find(m => m.nom === magasinActif)
     if (!magasin || !UUID_REGEX.test(magasin.id) || articles.length === 0) return null
+
+    if (remplacerTicketId) {
+      const { error: delErr } = await supabase.from('tickets').delete().eq('id', remplacerTicketId)
+      if (delErr) console.error('enregistrerTicket (remplacement, suppression ancien ticket):', delErr)
+    }
 
     const totalCalcule = Number(articles.reduce((s, a) => s + Number(a.prix || 0), 0).toFixed(2))
     const jour = dateTicket || new Date().toISOString().slice(0, 10)
@@ -655,7 +683,7 @@ export function MagasinProvider({ children }) {
       standaloneIngredients, ajouterIngredientStandalone,
       getSplit, setSplit, getHistoriqueSplits, enregistrerHistorique,
       ocrAliases, getOcrAlias, setOcrAlias,
-      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix, enregistrerTicket,
+      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix, enregistrerTicket, chercherTicketsExistants,
     }}>
       {children}
     </MagasinContext.Provider>

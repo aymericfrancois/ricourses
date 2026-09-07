@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
-  AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
-  Store, Check, Share2, Plus, Pencil,
+  AlertCircle, Trash2, ChevronDown, ChevronUp, Undo2, BookmarkCheck, CalendarDays,
+  Store, Check, Share2, Plus, Pencil, Copy,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -600,7 +600,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, getDernierePrixObs } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, getDernierePrixObs } = useMagasinContext()
   const { plats } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -625,12 +625,45 @@ function Scanner() {
   // Formulaire "article manquant" (ex: ligne totalement ratée par l'OCR)
   const [nouvelArticleNom, setNouvelArticleNom] = useState('')
   const [nouvelArticlePrix, setNouvelArticlePrix] = useState('')
+  // Détection de doublon : tickets déjà enregistrés pour la même enseigne + date
+  const [ticketsExistants, setTicketsExistants] = useState([])
+  const [avertissementIgnore, setAvertissementIgnore] = useState(false)
+  const [remplacerTicketId, setRemplacerTicketId] = useState(null)
 
   useEffect(() => {
     function onOutsideClick(e) { if (storeRef.current && !storeRef.current.contains(e.target)) setStoreOpen(false) }
     document.addEventListener('mousedown', onOutsideClick)
     return () => document.removeEventListener('mousedown', onOutsideClick)
   }, [])
+
+  // Détection de doublon : re-vérifie à chaque changement d'enseigne/date pendant
+  // la relecture du ticket, tant qu'il n'a pas encore été validé. La réinitialisation
+  // du choix précédent (remplacer / créer quand même) se fait au point de
+  // changement réel (handleDateChange / handleMagasinChange ci-dessous), pas ici :
+  // un effet ne doit pas appeler setState de façon synchrone dans son corps.
+  useEffect(() => {
+    if (step !== 'resultat' || validated) return
+    let annule = false
+    chercherTicketsExistants(magasinActif, dateTicket).then(res => {
+      if (!annule) setTicketsExistants(res)
+    })
+    return () => { annule = true }
+    // chercherTicketsExistants n'est pas mémoïsée (recréée à chaque rendu de
+    // MagasinProvider) : l'inclure redéclencherait cet effet à chaque rendu.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, magasinActif, dateTicket, validated])
+
+  function handleDateChange(valeur) {
+    setDateTicket(valeur)
+    setAvertissementIgnore(false)
+    setRemplacerTicketId(null)
+  }
+
+  function handleMagasinChange(nom) {
+    setMagasinActif(nom)
+    setAvertissementIgnore(false)
+    setRemplacerTicketId(null)
+  }
 
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
@@ -741,6 +774,9 @@ function Scanner() {
     setDateTicket(new Date().toISOString().slice(0, 10))
     setRawOcrText('')
     setTotalTicketOfficiel(null)
+    setTicketsExistants([])
+    setAvertissementIgnore(false)
+    setRemplacerTicketId(null)
   }
 
   // Quantité totale = nombre d'exemplaires × contenance unitaire (ex: 2 × 850 g
@@ -788,11 +824,12 @@ function Scanner() {
     await Promise.all([
       enregistrerHistorique(histEntries),
       enregistrerPrix(prixEntries, dateTicket),
-      enregistrerTicket({ dateTicket, totalOfficiel: totalTicketOfficiel, articles: articlesTicket, imageFile }),
+      enregistrerTicket({ dateTicket, totalOfficiel: totalTicketOfficiel, articles: articlesTicket, imageFile, remplacerTicketId }),
     ])
     setValidating(false)
+    // Reste affiché de façon permanente (pas d'auto-masquage) : seul un nouveau
+    // scan (handleReset) referme cet état "traité".
     setValidated(true)
-    setTimeout(() => setValidated(false), 2500)
   }
 
   function setArticleSplit(id, val) {
@@ -803,6 +840,20 @@ function Scanner() {
     setArticles(prev => prev.map(a =>
       a.id === id ? { ...a, ignored: !a.ignored } : a
     ))
+  }
+
+  // Réordonner manuellement : l'OCR peut lire les lignes dans un ordre différent
+  // du ticket papier, ce qui gêne la vérification article par article.
+  function deplacerArticle(articleId, direction) {
+    setArticles(prev => {
+      const idx = prev.findIndex(a => a.id === articleId)
+      if (idx < 0) return prev
+      const cible = idx + direction
+      if (cible < 0 || cible >= prev.length) return prev
+      const next = [...prev]
+      ;[next[idx], next[cible]] = [next[cible], next[idx]]
+      return next
+    })
   }
 
   // L'OCR peut aussi déformer un nom ("AISIN ROSE VRAC" au lieu de "RAISIN ROSE
@@ -1063,7 +1114,14 @@ function Scanner() {
           <div className="flex items-center gap-2">
             <CheckCircle2 size={18} className="accent-text" />
             <div>
-              <p className="text-sm font-bold ink">{articlesActifs.length} articles reconnus{nbIgnored > 0 && <span className="ink-3 font-normal"> · {nbIgnored} ignoré{nbIgnored > 1 ? 's' : ''}</span>}</p>
+              <p className="text-sm font-bold ink flex items-center gap-2 flex-wrap">
+                {articlesActifs.length} articles reconnus{nbIgnored > 0 && <span className="ink-3 font-normal"> · {nbIgnored} ignoré{nbIgnored > 1 ? 's' : ''}</span>}
+                {validated && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-extrabold uppercase tracking-wide">
+                    <BookmarkCheck size={11} />Traité
+                  </span>
+                )}
+              </p>
               <p className="text-xs ink-3">👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
             </div>
           </div>
@@ -1072,6 +1130,55 @@ function Scanner() {
             <RotateCcw size={12} />Nouveau ticket
           </button>
         </div>
+
+        {/* Doublon détecté : même enseigne + même date de ticket */}
+        {!validated && ticketsExistants.length > 0 && !avertissementIgnore && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
+            <Copy size={16} className="shrink-0 mt-0.5 text-amber-500" />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-amber-800">Ce ticket ressemble à un doublon</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                {ticketsExistants.length} ticket{ticketsExistants.length > 1 ? 's' : ''} déjà enregistré{ticketsExistants.length > 1 ? 's' : ''} pour <strong>{magasinActif}</strong> le{' '}
+                <strong>{new Date(dateTicket).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>
+                {ticketsExistants.map((t, i) => (
+                  <span key={t.id}>{i === 0 ? ' : ' : ', '}{t.total_calcule.toFixed(2)} € ({t.nb_articles} art.)</span>
+                ))}.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                <button
+                  type="button"
+                  onClick={() => { setRemplacerTicketId(ticketsExistants[0].id); setAvertissementIgnore(true) }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:brightness-110 transition-all"
+                >
+                  Remplacer le ticket existant
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAvertissementIgnore(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-800 border border-amber-300 bg-white/60 hover:bg-white transition-colors"
+                >
+                  Créer quand même
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rappel discret du choix fait sur le doublon (permet de revenir dessus) */}
+        {!validated && avertissementIgnore && ticketsExistants.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAvertissementIgnore(false)}
+            className="mb-4 w-full flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 hover:bg-amber-100 transition-colors"
+          >
+            {remplacerTicketId ? (
+              <>🔁 Ce ticket remplacera celui déjà enregistré pour {magasinActif} le {new Date(dateTicket).toLocaleDateString('fr-FR')}.</>
+            ) : (
+              <>➕ Nouveau ticket créé malgré le doublon détecté pour {magasinActif} le {new Date(dateTicket).toLocaleDateString('fr-FR')}.</>
+            )}
+            <span className="ml-auto underline shrink-0">changer</span>
+          </button>
+        )}
 
         {/* Debug : texte OCR brut (à retirer une fois le parsing fiable) */}
         {rawOcrText && (
@@ -1101,7 +1208,7 @@ function Scanner() {
 
         {/* Liste des articles */}
         <div className="glass divide-y divide-white/40 overflow-hidden">
-          {articles.map(article => {
+          {articles.map((article, idx) => {
             const split = articleSplits[article.id] ?? 'both'
             return (
               <div
@@ -1110,6 +1217,28 @@ function Scanner() {
                   article.ignored ? 'border-l-[color:var(--ink-4)] opacity-50' : BORDER_COLORS[split]
                 }`}
               >
+                {!validated && (
+                  <div className="flex flex-col shrink-0 -my-1 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => deplacerArticle(article.id, -1)}
+                      disabled={idx === 0}
+                      title="Monter"
+                      className="ink-4 hover:accent-text disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deplacerArticle(article.id, 1)}
+                      disabled={idx === articles.length - 1}
+                      title="Descendre"
+                      className="ink-4 hover:accent-text disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronDown size={13} />
+                    </button>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   {article.ignored ? (
                     <p className="text-sm font-semibold line-through ink-4">{article.nom}</p>
@@ -1200,39 +1329,50 @@ function Scanner() {
           })}
         </div>
 
-        {/* Article manquant (raté par l'OCR) */}
-        <form onSubmit={ajouterArticleManuel} className="flex flex-wrap items-center gap-2 mt-3 glass-sm px-3 py-2.5">
-          <Plus size={14} className="ink-4 shrink-0" />
-          <input
-            type="text"
-            value={nouvelArticleNom}
-            onChange={e => setNouvelArticleNom(e.target.value)}
-            placeholder="Article manquant (ex : Pizza poulet BBQ)"
-            className="flex-1 min-w-32 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-          />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={nouvelArticlePrix}
-            onChange={e => setNouvelArticlePrix(e.target.value)}
-            placeholder="Prix"
-            className="w-20 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
-          />
-          <button
-            type="submit"
-            disabled={!nouvelArticleNom.trim() || !nouvelArticlePrix.trim()}
-            className="flex items-center gap-1 accent-bg rounded-lg px-3 py-1.5 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Ajouter
-          </button>
-        </form>
+        {/* Article manquant (raté par l'OCR) — inutile une fois le ticket traité */}
+        {!validated && (
+          <form onSubmit={ajouterArticleManuel} className="flex flex-wrap items-center gap-2 mt-3 glass-sm px-3 py-2.5">
+            <Plus size={14} className="ink-4 shrink-0" />
+            <input
+              type="text"
+              value={nouvelArticleNom}
+              onChange={e => setNouvelArticleNom(e.target.value)}
+              placeholder="Article manquant (ex : Pizza poulet BBQ)"
+              className="flex-1 min-w-32 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+            />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={nouvelArticlePrix}
+              onChange={e => setNouvelArticlePrix(e.target.value)}
+              placeholder="Prix"
+              className="w-20 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+            />
+            <button
+              type="submit"
+              disabled={!nouvelArticleNom.trim() || !nouvelArticlePrix.trim()}
+              className="flex items-center gap-1 accent-bg rounded-lg px-3 py-1.5 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Ajouter
+            </button>
+          </form>
+        )}
 
-        {/* Bouton Valider */}
+        {/* Bouton Valider — remplacé par un état "traité" permanent, jamais
+            auto-masqué : seul un nouveau scan (handleReset) le referme. */}
         <div className="mt-4 flex justify-center">
           {validated ? (
-            <span className="flex items-center gap-2 text-sm font-semibold accent-text">
-              <BookmarkCheck size={16} />Ticket mémorisé !
-            </span>
+            <div className="flex flex-col items-center gap-2.5">
+              <span className="flex items-center gap-2 text-sm font-extrabold text-green-700 bg-green-50 border-2 border-green-300 rounded-xl px-5 py-3 shadow-sm">
+                <BookmarkCheck size={18} />Ticket traité et mémorisé
+              </span>
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 text-xs ink-3 hover:accent-text transition-colors"
+              >
+                <RotateCcw size={12} />Scanner un nouveau ticket
+              </button>
+            </div>
           ) : (
             <button
               onClick={handleValider}
@@ -1245,6 +1385,8 @@ function Scanner() {
             >
               {validating ? (
                 <><span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />Mémorisation…</>
+              ) : remplacerTicketId ? (
+                <><BookmarkCheck size={16} />Remplacer et mémoriser</>
               ) : (
                 <><BookmarkCheck size={16} />Valider et mémoriser</>
               )}
@@ -1267,7 +1409,7 @@ function Scanner() {
               type="date"
               value={dateTicket}
               max={new Date().toISOString().slice(0, 10)}
-              onChange={e => setDateTicket(e.target.value)}
+              onChange={e => handleDateChange(e.target.value)}
               className="bg-transparent focus:outline-none ink-2 text-xs"
             />
           </label>
@@ -1286,7 +1428,7 @@ function Scanner() {
                 {magasins.map(m => (
                   <button
                     key={m.id}
-                    onClick={() => { setMagasinActif(m.nom); setStoreOpen(false) }}
+                    onClick={() => { handleMagasinChange(m.nom); setStoreOpen(false) }}
                     className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
                       m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
                     }`}
