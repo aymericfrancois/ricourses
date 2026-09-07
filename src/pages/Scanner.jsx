@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
   AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
@@ -425,20 +426,51 @@ function PrixEditable({ valeur, onChange }) {
   )
 }
 
+// La liste des articles (parent) a overflow-hidden pour respecter les coins
+// arrondis du panneau — un menu en position absolute y serait donc découpé
+// pour les articles en bas de liste (dropdown invisible). Le menu est donc
+// téléporté dans document.body (createPortal) et positionné en `fixed` d'après
+// la position réelle de l'input, ce qui l'affranchit de tout ancêtre à overflow
+// masqué ou à contexte d'empilement (backdrop-filter, etc.).
 function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngredient }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const ref = useRef(null)
+  const [pos, setPos] = useState(null)
+  const wrapRef = useRef(null)
+  const inputRef = useRef(null)
 
   const filtered = query.trim()
     ? suggestions.filter(n => n.toLowerCase().includes(query.toLowerCase())).slice(0, 15)
     : suggestions.slice(0, 20)
 
+  function updatePos() {
+    const el = inputRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos({ top: r.bottom + 4, left: r.left, width: r.width })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return
+    updatePos()
+  }, [open])
+
   useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [])
+    if (!open) return
+    function handleOutside(e) {
+      const dansInput = wrapRef.current && wrapRef.current.contains(e.target)
+      const dansMenu = e.target.closest?.('[data-ingredient-selector-menu]')
+      if (!dansInput && !dansMenu) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    window.addEventListener('scroll', updatePos, true)
+    window.addEventListener('resize', updatePos)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      window.removeEventListener('scroll', updatePos, true)
+      window.removeEventListener('resize', updatePos)
+    }
+  }, [open])
 
   if (!open) {
     return (
@@ -457,8 +489,9 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
   }
 
   return (
-    <div ref={ref} className="relative mt-1">
+    <div ref={wrapRef} className="relative mt-1">
       <input
+        ref={inputRef}
         autoFocus
         type="text"
         value={query}
@@ -466,42 +499,49 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
         placeholder="Chercher un ingrédient…"
         className="w-full rounded-lg border border-[color:var(--accent)]/40 bg-white/80 px-2 py-1 text-xs ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
       />
-      <ul className="absolute z-40 top-full left-0 right-0 mt-1 popover max-h-40 overflow-y-auto p-1 anim-pop">
-        {currentMatch && (
-          <li
-            onMouseDown={e => { e.preventDefault(); onSelect(null); setOpen(false) }}
-            className="px-2 py-1.5 text-xs text-red-500 hover:bg-red-50/60 cursor-pointer rounded-lg"
-          >
-            ✕ Dissocier
-          </li>
-        )}
-        {filtered.map(nom => (
-          <li
-            key={nom}
-            onMouseDown={e => { e.preventDefault(); onSelect(nom); setOpen(false) }}
-            className={`px-2 py-1.5 text-xs cursor-pointer rounded-lg transition-colors ${nom === currentMatch ? 'accent-soft-bg accent-text font-semibold' : 'ink-2 hover:bg-white/60'}`}
-          >
-            {nom}
-          </li>
-        ))}
-        {query.trim().length >= 2 && !suggestions.some(n => n.toLowerCase() === query.trim().toLowerCase()) && (
-          <li
-            onMouseDown={e => {
-              e.preventDefault()
-              const newNom = query.trim()
-              onCreateIngredient(newNom)
-              onSelect(newNom)
-              setOpen(false)
-            }}
-            className="px-2 py-1.5 text-xs accent-text hover:accent-soft-bg cursor-pointer rounded-lg font-semibold"
-          >
-            ➕ Créer « {query.trim()} »
-          </li>
-        )}
-        {filtered.length === 0 && query.trim().length < 2 && (
-          <li className="px-2 py-2 text-xs ink-3 italic">Aucun résultat</li>
-        )}
-      </ul>
+      {pos && createPortal(
+        <ul
+          data-ingredient-selector-menu
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+          className="z-50 popover max-h-40 overflow-y-auto p-1 anim-pop"
+        >
+          {currentMatch && (
+            <li
+              onMouseDown={e => { e.preventDefault(); onSelect(null); setOpen(false) }}
+              className="px-2 py-1.5 text-xs text-red-500 hover:bg-red-50/60 cursor-pointer rounded-lg"
+            >
+              ✕ Dissocier
+            </li>
+          )}
+          {filtered.map(nom => (
+            <li
+              key={nom}
+              onMouseDown={e => { e.preventDefault(); onSelect(nom); setOpen(false) }}
+              className={`px-2 py-1.5 text-xs cursor-pointer rounded-lg transition-colors ${nom === currentMatch ? 'accent-soft-bg accent-text font-semibold' : 'ink-2 hover:bg-white/60'}`}
+            >
+              {nom}
+            </li>
+          ))}
+          {query.trim().length >= 2 && !suggestions.some(n => n.toLowerCase() === query.trim().toLowerCase()) && (
+            <li
+              onMouseDown={e => {
+                e.preventDefault()
+                const newNom = query.trim()
+                onCreateIngredient(newNom)
+                onSelect(newNom)
+                setOpen(false)
+              }}
+              className="px-2 py-1.5 text-xs accent-text hover:accent-soft-bg cursor-pointer rounded-lg font-semibold"
+            >
+              ➕ Créer « {query.trim()} »
+            </li>
+          )}
+          {filtered.length === 0 && query.trim().length < 2 && (
+            <li className="px-2 py-2 text-xs ink-3 italic">Aucun résultat</li>
+          )}
+        </ul>,
+        document.body
+      )}
     </div>
   )
 }
