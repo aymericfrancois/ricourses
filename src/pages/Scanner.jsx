@@ -482,7 +482,7 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, getDernierePrixObs } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, getDernierePrixObs } = useMagasinContext()
   const { plats } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -622,30 +622,52 @@ function Scanner() {
     setTotalTicketOfficiel(null)
   }
 
+  // Quantité totale = nombre d'exemplaires × contenance unitaire (ex: 2 × 850 g
+  // = 1700 g) → le prix normalisé (€/kg) reste correct même pour un achat multiple.
+  function quantiteEtNombre(article) {
+    const qtyUnite = articleQtyUnite[article.id]
+    const contenance = qtyUnite?.quantite ? parseFloat(qtyUnite.quantite) : null
+    const nombre = qtyUnite?.nombre ? parseFloat(qtyUnite.nombre) : 1
+    const quantiteTotale = contenance != null ? Number((nombre * contenance).toFixed(3)) : null
+    return { nombre, quantite: quantiteTotale, unite: qtyUnite?.unite || null }
+  }
+
   async function handleValider() {
     setValidating(true)
     const matched = articlesActifs.filter(a => a.matchedNom)
 
     const histEntries = matched.map(a => ({ ingredient_nom: a.matchedNom, split_choisi: articleSplits[a.id] ?? 'both' }))
     const prixEntries = matched.map(a => {
-      const qtyUnite = articleQtyUnite[a.id]
-      const contenance = qtyUnite?.quantite ? parseFloat(qtyUnite.quantite) : null
-      const nombre = qtyUnite?.nombre ? parseFloat(qtyUnite.nombre) : 1
-      // Quantité totale = nombre d'exemplaires × contenance unitaire (ex: 2 × 850 g = 1700 g)
-      // → le prix normalisé (€/kg) reste correct même pour un achat multiple.
-      const quantiteTotale = contenance != null ? Number((nombre * contenance).toFixed(3)) : null
+      const { quantite, unite } = quantiteEtNombre(a)
       return {
         ingredient_nom: a.matchedNom,
         prix: a.prix,
         prixBase: a.prixBase ?? a.prix,
-        quantite: quantiteTotale,
-        unite: qtyUnite?.unite || null,
+        quantite,
+        unite,
+      }
+    })
+
+    // Historique tickets : TOUS les articles actifs (reconnus ou non) — trace
+    // fidèle du reçu, contrairement à prixEntries qui ne garde que les reconnus.
+    const articlesTicket = articlesActifs.map(a => {
+      const { nombre, quantite, unite } = quantiteEtNombre(a)
+      return {
+        nom: a.nom,
+        matchedNom: a.matchedNom,
+        prix: a.prix,
+        prixBase: a.prixBase ?? a.prix,
+        nombre,
+        quantite,
+        unite,
+        split: articleSplits[a.id] ?? 'both',
       }
     })
 
     await Promise.all([
       enregistrerHistorique(histEntries),
       enregistrerPrix(prixEntries, dateTicket),
+      enregistrerTicket({ dateTicket, totalOfficiel: totalTicketOfficiel, articles: articlesTicket, imageFile }),
     ])
     setValidating(false)
     setValidated(true)

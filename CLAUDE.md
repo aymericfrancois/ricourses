@@ -85,6 +85,7 @@ Routes defined in `src/App.jsx` with `basename="/ricourses"`.
 | `/` | `Home` | Landing page |
 | `/planning` | `Planning` | Weekly planner + live shopping list |
 | `/scanner` | `Scanner` | Receipt scanner + Tricount |
+| `/historique` | `Historique` | Historique des tickets scannés (liste, détail, export CSV) |
 | `/plats` | `Parametres` | Manage meals and their ingredients |
 | `/rayons` | `Parametres` | Reorder/rename/add sections per store |
 | `/ingredients` | `Parametres` | Searchable ingredient catalogue with section & split assignment |
@@ -101,6 +102,7 @@ Persistent sticky header on all pages. Flat navigation — no dropdown menus.
 **Nav links (in order):**
 - **Planning** → `/planning` (CalendarDays icon)
 - **Scanner** → `/scanner` (ScanLine icon)
+- **Historique** → `/historique` (History icon) — historique des tickets scannés
 - **Plats** → `/plats` (UtensilsCrossed icon)
 - **Rayons** → `/rayons` (LayoutList icon)
 - **Ingrédients** → `/ingredients` (Leaf icon)
@@ -354,10 +356,24 @@ Travaille toujours directement sur la branche `main`. Ne crée jamais de branche
 
 ## Next Steps (Roadmap)
 
-- **Remplacer le Mock OCR du Scanner :** Intégrer une vraie solution de lecture d'image (ex: API Vision — Google Cloud Vision, AWS Textract, ou Mistral OCR). Remplacer `MOCK_ARTICLES` dans `Scanner.jsx` par l'appel API réel. La shape de données attendue reste la même : `{ id, nom, prix, matchedNom }`.
-- **Migration vers Supabase :** Remplacer le stockage `localStorage` par une vraie base de données Supabase (PostgreSQL). Ajouter authentification utilisateur, synchronisation multi-appareils, et partage de planning entre utilisateurs du foyer.
+> ⚠️ Cette section (et plusieurs autres plus haut : Header nav, `/liste`, localStorage Keys) documente un état antérieur du projet et n'a pas été entièrement resynchronisée avec le code actuel. En particulier : l'OCR est réel (Tesseract.js dans `Scanner.jsx`, pas de mock), et une bonne partie des données vit déjà côté Supabase (`magasins`, `rayons`, `prix_observations`, `tickets`, `ticket_articles`, `ingredient_rayons`, `ingredient_splits`, `scanner_historique`, `ocr_aliases`, `courses_cochees`, `ingredients_standalone`) avec authentification (voir `src/pages/Login.jsx`, `src/hooks/useAuth.js`). Se fier au code (`src/`) et aux migrations dans `docs/supabase/*.sql` en cas de doute plutôt qu'aux sections non mises à jour.
+
 - **DnD depuis ListeCourses :** Permettre le drag & drop pour réassigner un ingrédient depuis `/liste` (le Planning a déjà ce DnD).
 - **defaultSplit dans l'onglet Plats :** Afficher et éditer le `defaultSplit` directement depuis la fiche d'un plat (actuellement uniquement dans l'onglet Ingrédients).
+- **Suppression d'enseigne :** `useMagasins`/`MagasinContext` permettent d'ajouter une enseigne (`ajouterMagasin`) mais pas d'en supprimer une.
+
+---
+
+## Historique des tickets (`/historique`)
+
+Chaque validation d'un ticket dans le Scanner (`handleValider` dans `Scanner.jsx`) écrit, en plus des tables existantes (`prix_observations`, `scanner_historique`), un enregistrement complet du ticket via `MagasinContext.enregistrerTicket()` :
+
+- **Table `tickets`** (1 ligne par ticket scanné) : `magasin_id`, `magasin_nom`, `date_ticket`, `total_officiel` (extrait de l'OCR, ex. "À payer"), `total_calculé` (somme des articles validés), `nb_articles`, `image_path` (optionnel).
+- **Table `ticket_articles`** (1 ligne par article du ticket) : `nom_article` (nom brut OCR), `ingredient_nom` (nullable — contrairement à `prix_observations`, les articles **non reconnus** sont conservés ici), `prix`, `nombre`, `quantite`, `unite`, `prix_normalise`, `famille`, `split_choisi`.
+
+Photo du ticket (optionnel) : uploadée dans le bucket Storage `tickets-images` (public en lecture) si présent ; l'échec d'upload ne bloque jamais l'enregistrement du ticket. Migration complète (tables + policies RLS + bucket) : `docs/supabase/2026-09-07-tickets-historique.sql` — à exécuter une fois dans le SQL Editor du dashboard Supabase.
+
+Lecture (page `/historique`, `src/hooks/useTicketsHistorique.js`) : liste des tickets (chargée en une fois), détail des articles chargé à la demande à l'ouverture d'un ticket. Export CSV (`src/utils/csv.js`, séparateur `;`, décimales `,`, BOM UTF-8 pour Excel FR) par ticket ou pour tout l'historique filtré.
 
 ---
 

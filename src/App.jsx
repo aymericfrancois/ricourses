@@ -11,6 +11,7 @@ import ListeCourses from './pages/ListeCourses'
 import Planning from './pages/Planning'
 import ShoppingList from './pages/ShoppingList'
 import Scanner from './pages/Scanner'
+import Historique from './pages/Historique'
 import Login from './pages/Login'
 
 function App() {
@@ -52,6 +53,7 @@ function App() {
             <Route path="/ingredients" element={<Parametres />} />
             <Route path="/prix" element={<Parametres />} />
             <Route path="/scanner" element={<Scanner />} />
+            <Route path="/historique" element={<Historique />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </PlanningProvider>

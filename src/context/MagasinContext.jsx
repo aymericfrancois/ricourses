@@ -441,6 +441,77 @@ export function MagasinProvider({ children }) {
     if (error) console.error('enregistrerPrix:', error)
   }
 
+  // ---- Historique tickets (page /historique) ----
+  // Contrairement à enregistrerPrix (qui ne garde QUE les articles reconnus, pour
+  // l'estimateur/comparateur de prix), on stocke ici TOUS les articles validés du
+  // ticket — reconnus ou non. C'est la trace fidèle du reçu papier.
+  // articles: [{ nom, matchedNom, prix, prixBase, nombre, quantite, unite, split }]
+  // imageFile: File optionnel (photo du ticket) — l'échec d'upload ne bloque pas
+  // l'enregistrement du ticket (le bucket "tickets-images" peut ne pas exister).
+  async function enregistrerTicket({ dateTicket, totalOfficiel, articles, imageFile }) {
+    const magasin = magasins.find(m => m.nom === magasinActif)
+    if (!magasin || !UUID_REGEX.test(magasin.id) || articles.length === 0) return null
+
+    const totalCalcule = Number(articles.reduce((s, a) => s + Number(a.prix || 0), 0).toFixed(2))
+    const jour = dateTicket || new Date().toISOString().slice(0, 10)
+
+    const { data: ticketData, error: ticketErr } = await supabase
+      .from('tickets')
+      .insert({
+        magasin_id: magasin.id,
+        magasin_nom: magasin.nom,
+        date_ticket: jour,
+        total_officiel: totalOfficiel ?? null,
+        total_calcule: totalCalcule,
+        nb_articles: articles.length,
+      })
+      .select('id')
+      .single()
+
+    if (ticketErr) { console.error('enregistrerTicket:', ticketErr); return null }
+
+    const ticketId = ticketData.id
+
+    const rows = articles.map(a => {
+      const norm = prixNormalise(a.prixBase ?? a.prix, a.quantite, a.unite)
+      return {
+        ticket_id: ticketId,
+        nom_article: a.nom,
+        ingredient_nom: a.matchedNom ? a.matchedNom.toLowerCase() : null,
+        prix: a.prix,
+        nombre: a.nombre ?? 1,
+        quantite: a.quantite ?? null,
+        unite: a.unite ?? null,
+        prix_normalise: norm?.prixNorm ?? null,
+        famille: norm?.famille ?? null,
+        split_choisi: a.split ?? null,
+      }
+    })
+
+    const { error: artErr } = await supabase.from('ticket_articles').insert(rows)
+    if (artErr) console.error('enregistrerTicket articles:', artErr)
+
+    if (imageFile) {
+      const ext = (imageFile.name?.split('.').pop() || 'jpg').toLowerCase()
+      const path = `${magasin.id}/${ticketId}.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from('tickets-images')
+        .upload(path, imageFile, { contentType: imageFile.type || 'image/jpeg', upsert: true })
+
+      if (uploadErr) {
+        // Non bloquant : le bucket "tickets-images" peut ne pas exister (partie
+        // optionnelle de la migration SQL non exécutée). Le ticket reste valide,
+        // simplement sans photo.
+        console.error('enregistrerTicket image:', uploadErr)
+      } else {
+        const { error: updErr } = await supabase.from('tickets').update({ image_path: path }).eq('id', ticketId)
+        if (updErr) console.error('enregistrerTicket image_path:', updErr)
+      }
+    }
+
+    return ticketId
+  }
+
   // ---- Magasin actif ----
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
@@ -584,7 +655,7 @@ export function MagasinProvider({ children }) {
       standaloneIngredients, ajouterIngredientStandalone,
       getSplit, setSplit, getHistoriqueSplits, enregistrerHistorique,
       ocrAliases, getOcrAlias, setOcrAlias,
-      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix,
+      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix, enregistrerTicket,
     }}>
       {children}
     </MagasinContext.Provider>

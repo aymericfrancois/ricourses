@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf, ShoppingCart, Store, Check, ChevronDown, LogOut, Euro } from 'lucide-react'
+import { CalendarDays, ScanLine, UtensilsCrossed, LayoutList, Leaf, ShoppingCart, Store, Check, ChevronDown, LogOut, Euro, History } from 'lucide-react'
 import { useMagasinContext } from '../context/MagasinContext'
 import { supabase } from '../supabaseClient'
 
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/planning', icon: CalendarDays, label: 'Planning' },
   { to: '/courses', icon: ShoppingCart, label: 'Courses' },
   { to: '/scanner', icon: ScanLine, label: 'Scanner' },
+  { to: '/historique', icon: History, label: 'Historique' },
   { to: '/plats', icon: UtensilsCrossed, label: 'Plats' },
   { to: '/rayons', icon: LayoutList, label: 'Rayons' },
   { to: '/ingredients', icon: Leaf, label: 'Ingrédients' },
