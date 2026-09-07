@@ -354,6 +354,43 @@ function trouverCorrespondance(nomArticle, ingredientNames, getOcrAlias) {
   return null
 }
 
+// Pré-remplissage "si possible" : détecte une date d'achat imprimée sur le
+// ticket (en-tête ou pied), pour éviter de laisser "aujourd'hui" par défaut
+// quand on scanne un ticket quelques jours après l'achat. Best-effort — un
+// échec de détection laisse simplement la date par défaut (aujourd'hui).
+function detecterDateAchat(texte) {
+  const lignes = texte.split('\n')
+  const zone = [...lignes.slice(0, 15), ...lignes.slice(-15)]
+  const aujourdhui = new Date().toISOString().slice(0, 10)
+
+  for (const ligne of zone) {
+    const m = ligne.match(/\b(\d{2})[./-](\d{2})[./-](\d{2,4})\b/)
+    if (!m) continue
+    const [, jj, mm, aa] = m
+    const annee = aa.length === 2 ? Number(aa) + 2000 : Number(aa)
+    const jour = Number(jj)
+    const mois = Number(mm)
+    if (jour < 1 || jour > 31 || mois < 1 || mois > 12) continue
+    if (annee < 2020 || annee > new Date().getFullYear() + 1) continue
+
+    const iso = `${annee}-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`
+    if (iso <= aujourdhui) return iso // jamais une date future (garde-fou OCR)
+  }
+  return null
+}
+
+// Détecte le nom de l'enseigne dans les premières lignes du ticket (les
+// commerces impriment leur nom en en-tête). Ne bascule le magasin actif que si
+// un des noms connus (Lidl, Carrefour, E.Leclerc, Aldi…) apparaît clairement.
+function detecterMagasinDepuisOcr(texte, magasinsConnus) {
+  const debut = normaliser(texte.split('\n').slice(0, 8).join(' '))
+  for (const m of magasinsConnus) {
+    const mots = normaliser(m.nom).split(' ').filter(w => w.length >= 3)
+    if (mots.length > 0 && mots.every(w => debut.includes(w))) return m.nom
+  }
+  return null
+}
+
 const STATUS_LABELS = {
   'loading tesseract core': 'Chargement du moteur OCR…',
   'initializing tesseract': 'Initialisation…',
@@ -483,12 +520,15 @@ function PrixEditable({ valeur, onChange }) {
 // téléporté dans document.body (createPortal) et positionné en `fixed` d'après
 // la position réelle de l'input, ce qui l'affranchit de tout ancêtre à overflow
 // masqué ou à contexte d'empilement (backdrop-filter, etc.).
-function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngredient }) {
+function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngredient, onRenameIngredient }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState(null)
+  const [renommage, setRenommage] = useState(false)
+  const [texteRenommage, setTexteRenommage] = useState('')
   const wrapRef = useRef(null)
   const inputRef = useRef(null)
+  const submisRenommageRef = useRef(false)
 
   const filtered = query.trim()
     ? suggestions.filter(n => n.toLowerCase().includes(query.toLowerCase())).slice(0, 15)
@@ -523,19 +563,63 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
     }
   }, [open])
 
+  // Renommer l'ingrédient associé lui-même (partout dans Ricourses), distinct
+  // du réassignement à un autre ingrédient existant.
+  function confirmerRenommage() {
+    const trimmed = texteRenommage.trim()
+    if (trimmed && trimmed !== currentMatch) onRenameIngredient(currentMatch, trimmed)
+    setRenommage(false)
+  }
+  function annulerRenommage() {
+    setTexteRenommage(currentMatch ?? '')
+    setRenommage(false)
+  }
+
+  if (renommage) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={texteRenommage}
+        onChange={e => setTexteRenommage(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); submisRenommageRef.current = true; confirmerRenommage() }
+          if (e.key === 'Escape') { submisRenommageRef.current = true; annulerRenommage() }
+        }}
+        onBlur={() => {
+          if (submisRenommageRef.current) { submisRenommageRef.current = false; return }
+          confirmerRenommage()
+        }}
+        className="mt-0.5 w-40 rounded-lg border-2 border-[color:var(--accent)]/50 bg-white/90 px-2 py-0.5 text-[11px] font-semibold ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+      />
+    )
+  }
+
   if (!open) {
     return (
-      <button
-        onClick={() => { setOpen(true); setQuery('') }}
-        className="text-[10px] ink-3 mt-0.5 flex items-center gap-0.5 hover:accent-text transition-colors group"
-      >
-        {currentMatch ? (
-          <span>→ <span className="font-semibold ink-2 group-hover:accent-text">{currentMatch}</span></span>
-        ) : (
-          <span className="italic">Associer un ingrédient…</span>
+      <div className="flex items-center gap-1 mt-0.5">
+        <button
+          onClick={() => { setOpen(true); setQuery('') }}
+          className="text-[10px] ink-3 flex items-center gap-0.5 hover:accent-text transition-colors group"
+        >
+          {currentMatch ? (
+            <span>→ <span className="font-semibold ink-2 group-hover:accent-text">{currentMatch}</span></span>
+          ) : (
+            <span className="italic">Associer un ingrédient…</span>
+          )}
+          <ChevronDown size={9} className="shrink-0" />
+        </button>
+        {currentMatch && onRenameIngredient && (
+          <button
+            type="button"
+            onClick={() => { setTexteRenommage(currentMatch); setRenommage(true) }}
+            title={`Renommer "${currentMatch}" partout dans Ricourses`}
+            className="ink-4 hover:accent-text transition-colors shrink-0"
+          >
+            <Pencil size={9} />
+          </button>
         )}
-        <ChevronDown size={9} className="shrink-0" />
-      </button>
+      </div>
     )
   }
 
@@ -600,8 +684,8 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, getDernierePrixObs } = useMagasinContext()
-  const { plats } = usePlats()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, getDernierePrixObs, renommerIngredientDansRayons } = useMagasinContext()
+  const { plats, renommerIngredient } = usePlats()
 
   const [step, setStep] = useState('capture')
   const [imagePreview, setImagePreview] = useState(null)
@@ -704,6 +788,13 @@ function Scanner() {
       })
 
       setRawOcrText(result.data.text || '')
+
+      // Pré-remplissage "si possible" (date d'achat, enseigne) — best-effort,
+      // sans impact si rien n'est détecté (reste sur les valeurs par défaut).
+      const dateDetectee = detecterDateAchat(result.data.text)
+      if (dateDetectee) setDateTicket(dateDetectee)
+      const magasinDetecte = detecterMagasinDepuisOcr(result.data.text, magasins)
+      if (magasinDetecte && magasinDetecte !== magasinActif) setMagasinActif(magasinDetecte)
 
       // Fusion des doublons (même article scanné 2x sur le ticket Leclerc)
       const { articles: parsed, totalTicketOfficiel } = parserTicket(result.data.text)
@@ -872,6 +963,19 @@ function Scanner() {
       }
     }
     setArticles(prev => prev.map(a => a.id === articleId ? { ...a, nom: nouveauNom, matchedNom } : a))
+  }
+
+  // Renomme l'INGRÉDIENT associé, partout dans Ricourses (recettes, rayons par
+  // enseigne, standalone, split Tricount par défaut) — même cascade que le
+  // renommage depuis l'onglet Ingrédients. Distinct de renommerArticle : ici on
+  // corrige le nom de l'ingrédient lui-même (ex: "Parmesan" → "Parmesan râpé"),
+  // pas juste l'association de cet article-là.
+  function renommerIngredientGlobal(ancienNom, nouveauNom) {
+    renommerIngredient(ancienNom, nouveauNom)
+    renommerIngredientDansRayons(ancienNom, nouveauNom)
+    // Propager dans la session en cours : sans ça, les autres articles déjà
+    // associés à l'ancien nom resteraient affichés avec le nom obsolète.
+    setArticles(prev => prev.map(a => a.matchedNom === ancienNom ? { ...a, matchedNom: nouveauNom } : a))
   }
 
   // L'OCR peut se tromper sur un prix (chiffre mal lu, lignes fusionnées) : on
@@ -1131,6 +1235,49 @@ function Scanner() {
           </button>
         </div>
 
+        {/* Date d'achat + enseigne — en haut, avant la relecture des articles
+            (pré-remplis si détectés sur le ticket, sinon aujourd'hui / dernier
+            magasin actif). Conditionne la détection de doublon ci-dessous. */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <label className="flex items-center gap-1.5 text-xs ink-2 border border-white/70 rounded-xl px-2.5 py-1.5 bg-white/70" title="Date d'achat">
+            <CalendarDays size={13} className="ink-3" />
+            <input
+              type="date"
+              value={dateTicket}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={e => handleDateChange(e.target.value)}
+              className="bg-transparent focus:outline-none ink-2 text-xs"
+            />
+          </label>
+          <div className="relative" ref={storeRef}>
+            <button
+              onClick={() => setStoreOpen(o => !o)}
+              className="flex items-center gap-1.5 text-xs font-semibold accent-text border border-[color:var(--accent)]/30 rounded-xl px-2.5 py-1.5 accent-soft-bg hover:brightness-95 transition-colors"
+            >
+              <Store size={12} />
+              <span>{magasinActif}</span>
+              <ChevronDown size={11} />
+            </button>
+            {storeOpen && (
+              <div className="absolute left-0 top-full mt-2 min-w-[160px] popover p-1.5 anim-pop z-50">
+                <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
+                {magasins.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => { handleMagasinChange(m.nom); setStoreOpen(false) }}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                      m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
+                    }`}
+                  >
+                    <span>{m.nom}</span>
+                    {m.nom === magasinActif && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Doublon détecté : même enseigne + même date de ticket */}
         {!validated && ticketsExistants.length > 0 && !avertissementIgnore && (
           <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
@@ -1257,6 +1404,7 @@ function Scanner() {
                         creerIngredient(nom)
                         setOcrAlias(article.nom, nom)
                       }}
+                      onRenameIngredient={renommerIngredientGlobal}
                     />
                   )}
                   {!article.ignored && article.matchedNom && (
@@ -1400,47 +1548,6 @@ function Scanner() {
       <div className="fixed bottom-0 left-0 right-0 z-30">
         <div className="h-14 bg-gradient-to-b from-transparent to-white/80 pointer-events-none" />
         <div className="px-4 pb-4 space-y-2">
-
-        {/* Barre date + magasin — juste au-dessus des totaux */}
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs ink-2 border border-white/70 rounded-xl px-2.5 py-1.5 bg-white/80 backdrop-blur-sm" title="Date du ticket">
-            <CalendarDays size={13} className="ink-3" />
-            <input
-              type="date"
-              value={dateTicket}
-              max={new Date().toISOString().slice(0, 10)}
-              onChange={e => handleDateChange(e.target.value)}
-              className="bg-transparent focus:outline-none ink-2 text-xs"
-            />
-          </label>
-          <div className="relative" ref={storeRef}>
-            <button
-              onClick={() => setStoreOpen(o => !o)}
-              className="flex items-center gap-1.5 text-xs font-semibold accent-text border border-[color:var(--accent)]/30 rounded-xl px-2.5 py-1.5 accent-soft-bg backdrop-blur-sm hover:brightness-95 transition-colors"
-            >
-              <Store size={12} />
-              <span>{magasinActif}</span>
-              <ChevronDown size={11} />
-            </button>
-            {storeOpen && (
-              <div className="absolute left-0 bottom-full mb-2 min-w-[160px] popover p-1.5 anim-pop z-50">
-                <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold ink-3 uppercase tracking-widest">Magasin</p>
-                {magasins.map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => { handleMagasinChange(m.nom); setStoreOpen(false) }}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
-                      m.nom === magasinActif ? 'accent-soft-bg accent-text' : 'ink-2 hover:bg-white/60'
-                    }`}
-                  >
-                    <span>{m.nom}</span>
-                    {m.nom === magasinActif && <Check size={13} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
 
         <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4" style={{ background: 'rgba(255,255,255,0.96)' }}>
           {totalTicketOfficiel != null && Math.abs(totalTicketOfficiel - totalTicket) > 0.05 && (

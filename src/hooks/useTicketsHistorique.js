@@ -13,7 +13,7 @@ export function useTicketsHistorique() {
     async function fetchTickets() {
       const { data, error } = await supabase
         .from('tickets')
-        .select('id, magasin_nom, date_ticket, total_officiel, total_calcule, nb_articles, image_path, created_at')
+        .select('id, magasin_id, magasin_nom, date_ticket, total_officiel, total_calcule, nb_articles, image_path, created_at')
         .order('date_ticket', { ascending: false })
         .order('created_at', { ascending: false })
 
@@ -65,5 +65,34 @@ export function useTicketsHistorique() {
     return supabase.storage.from('tickets-images').getPublicUrl(imagePath).data.publicUrl
   }
 
-  return { tickets, loading, articlesParTicket, chargerArticles, chargerTousLesArticles, getImageUrl }
+  // Correction ponctuelle d'un ticket déjà enregistré : date d'achat et/ou
+  // enseigne (mauvaise saisie au moment du scan). La date de scan (created_at)
+  // n'est volontairement pas éditable : c'est un horodatage technique, pas une
+  // donnée métier — seule la date d'achat (date_ticket) a besoin d'être corrigée.
+  const modifierTicket = useCallback(async (ticketId, champs) => {
+    const { error } = await supabase.from('tickets').update(champs).eq('id', ticketId)
+    if (error) { console.error('modifierTicket:', error); return false }
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...champs } : t))
+    return true
+  }, [])
+
+  // Supprime le ticket (ticket_articles part en cascade) et, si une photo avait
+  // été conservée, tente de la supprimer aussi du bucket (best-effort : un échec
+  // n'empêche pas la suppression du ticket).
+  const supprimerTicket = useCallback(async (ticketId, imagePath) => {
+    if (imagePath) {
+      const { error: storageErr } = await supabase.storage.from('tickets-images').remove([imagePath])
+      if (storageErr) console.error('supprimerTicket (photo):', storageErr)
+    }
+    const { error } = await supabase.from('tickets').delete().eq('id', ticketId)
+    if (error) { console.error('supprimerTicket:', error); return false }
+    setTickets(prev => prev.filter(t => t.id !== ticketId))
+    setArticlesParTicket(prev => {
+      const { [ticketId]: _, ...reste } = prev
+      return reste
+    })
+    return true
+  }, [])
+
+  return { tickets, loading, articlesParTicket, chargerArticles, chargerTousLesArticles, getImageUrl, modifierTicket, supprimerTicket }
 }

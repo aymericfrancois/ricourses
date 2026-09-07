@@ -1,8 +1,11 @@
 import { useState, useMemo } from 'react'
-import { History, ChevronDown, ChevronUp, Download, Loader2, ImageIcon, Store } from 'lucide-react'
+import { History, ChevronDown, ChevronUp, Download, Loader2, ImageIcon, Store, CalendarDays, Trash2 } from 'lucide-react'
 import { useTicketsHistorique } from '../hooks/useTicketsHistorique'
+import { useMagasinContext } from '../context/MagasinContext'
 import { formatPrixNorm, UNITE_BASE_NOM } from '../utils/prix'
 import { construireCsv, telechargerCsv, formatNombreCsv } from '../utils/csv'
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const ENTETES_CSV = ['Date', 'Magasin', 'Article (ticket)', 'Ingrédient associé', 'Prix (€)', 'Nombre', 'Quantité', 'Unité', 'Prix normalisé']
 
@@ -51,8 +54,11 @@ function LigneArticle({ article }) {
 }
 
 // ---- Une carte ticket (repliée / dépliée) ----
-function CarteTicket({ ticket, ouvert, onToggle, articles, chargement, onExporter, getImageUrl }) {
-  const date = new Date(ticket.date_ticket).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+function CarteTicket({ ticket, ouvert, onToggle, articles, chargement, onExporter, getImageUrl, magasins, onModifierDate, onModifierMagasin, onSupprimer }) {
+  const [confirmSuppr, setConfirmSuppr] = useState(false)
+  const dateAchat = new Date(ticket.date_ticket).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+  const dateScan = new Date(ticket.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+    + ' à ' + new Date(ticket.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   const ecart = ticket.total_officiel != null ? Math.abs(ticket.total_officiel - ticket.total_calcule) : 0
   const imageUrl = getImageUrl(ticket.image_path)
 
@@ -68,7 +74,7 @@ function CarteTicket({ ticket, ouvert, onToggle, articles, chargement, onExporte
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-bold ink truncate">{ticket.magasin_nom}</p>
-          <p className="text-xs ink-3">{date} · {ticket.nb_articles} article{ticket.nb_articles > 1 ? 's' : ''}</p>
+          <p className="text-xs ink-3">{dateAchat} · {ticket.nb_articles} article{ticket.nb_articles > 1 ? 's' : ''}</p>
         </div>
         <div className="text-right shrink-0">
           <p className="font-extrabold ink tabular-nums mono">{ticket.total_calcule.toFixed(2)} €</p>
@@ -78,6 +84,53 @@ function CarteTicket({ ticket, ouvert, onToggle, articles, chargement, onExporte
         </div>
         {ouvert ? <ChevronUp size={16} className="ink-4 shrink-0" /> : <ChevronDown size={16} className="ink-4 shrink-0" />}
       </button>
+
+      {/* Correction (date d'achat, magasin) + suppression — toujours accessible,
+          indépendamment du dépli du détail. La date de scan (created_at) est un
+          horodatage technique, volontairement non éditable. */}
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-3 pt-0.5 text-xs border-t border-white/30">
+        <label className="flex items-center gap-1.5 ink-2 border border-white/70 rounded-lg px-2 py-1 bg-white/60" title="Date d'achat">
+          <CalendarDays size={12} className="ink-3" />
+          <input
+            type="date"
+            value={ticket.date_ticket}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={e => onModifierDate(e.target.value)}
+            className="bg-transparent focus:outline-none ink-2 text-xs"
+          />
+        </label>
+        <span className="ink-4 text-[10px]" title="Horodatage technique du scan, non modifiable">
+          scanné le {dateScan}
+        </span>
+        <select
+          value={ticket.magasin_nom}
+          onChange={e => onModifierMagasin(e.target.value)}
+          className="rounded-lg border border-white/70 bg-white/60 px-2 py-1 text-xs ink focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+        >
+          {!magasins.some(m => m.nom === ticket.magasin_nom) && (
+            <option value={ticket.magasin_nom}>{ticket.magasin_nom}</option>
+          )}
+          {magasins.map(m => <option key={m.id} value={m.nom}>{m.nom}</option>)}
+        </select>
+        <div className="ml-auto">
+          {confirmSuppr ? (
+            <span className="flex items-center gap-1.5">
+              <span className="ink-3">Supprimer ?</span>
+              <button type="button" onClick={onSupprimer} className="font-bold text-red-600 hover:text-red-700 transition-colors">Oui</button>
+              <button type="button" onClick={() => setConfirmSuppr(false)} className="ink-3 hover:ink transition-colors">Annuler</button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmSuppr(true)}
+              title="Supprimer ce ticket"
+              className="ink-4 hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      </div>
 
       {ouvert && (
         <div className="border-t border-white/40">
@@ -116,7 +169,8 @@ function CarteTicket({ ticket, ouvert, onToggle, articles, chargement, onExporte
 }
 
 function Historique() {
-  const { tickets, loading, articlesParTicket, chargerArticles, chargerTousLesArticles, getImageUrl } = useTicketsHistorique()
+  const { tickets, loading, articlesParTicket, chargerArticles, chargerTousLesArticles, getImageUrl, modifierTicket, supprimerTicket } = useTicketsHistorique()
+  const { magasins } = useMagasinContext()
   const [ouverts, setOuverts] = useState(() => new Set())
   const [chargementParTicket, setChargementParTicket] = useState({})
   const [filtreMagasin, setFiltreMagasin] = useState('')
@@ -139,6 +193,24 @@ function Historique() {
       await chargerArticles(ticket.id)
       setChargementParTicket(prev => ({ ...prev, [ticket.id]: false }))
     }
+  }
+
+  function modifierDateTicket(ticket, valeur) {
+    modifierTicket(ticket.id, { date_ticket: valeur })
+  }
+
+  function modifierMagasinTicket(ticket, nom) {
+    const magasin = magasins.find(m => m.nom === nom)
+    // Le ticket référence l'enseigne par magasin_id (FK contrainte NOT NULL) en
+    // plus de magasin_nom (dénormalisé) — il faut les mettre à jour ensemble,
+    // et seulement vers une enseigne réellement synchronisée (UUID valide).
+    if (!magasin || !UUID_REGEX.test(magasin.id)) return
+    modifierTicket(ticket.id, { magasin_id: magasin.id, magasin_nom: magasin.nom })
+  }
+
+  function supprimerTicketConfirme(ticket) {
+    supprimerTicket(ticket.id, ticket.image_path)
+    setOuverts(prev => { const next = new Set(prev); next.delete(ticket.id); return next })
   }
 
   async function exporterTicket(ticket) {
@@ -217,6 +289,10 @@ function Historique() {
                 chargement={!!chargementParTicket[ticket.id]}
                 onExporter={() => exporterTicket(ticket)}
                 getImageUrl={getImageUrl}
+                magasins={magasins}
+                onModifierDate={valeur => modifierDateTicket(ticket, valeur)}
+                onModifierMagasin={nom => modifierMagasinTicket(ticket, nom)}
+                onSupprimer={() => supprimerTicketConfirme(ticket)}
               />
             ))}
           </div>

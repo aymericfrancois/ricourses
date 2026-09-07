@@ -476,6 +476,13 @@ export function MagasinProvider({ children }) {
     if (!magasin || !UUID_REGEX.test(magasin.id) || articles.length === 0) return null
 
     if (remplacerTicketId) {
+      // Nettoyer l'ancienne photo avant de supprimer le ticket, sinon son
+      // chemin est perdu et le fichier reste orphelin dans le bucket.
+      const { data: ancien } = await supabase.from('tickets').select('image_path').eq('id', remplacerTicketId).single()
+      if (ancien?.image_path) {
+        const { error: rmErr } = await supabase.storage.from('tickets-images').remove([ancien.image_path])
+        if (rmErr) console.error('enregistrerTicket (remplacement, suppression photo):', rmErr)
+      }
       const { error: delErr } = await supabase.from('tickets').delete().eq('id', remplacerTicketId)
       if (delErr) console.error('enregistrerTicket (remplacement, suppression ancien ticket):', delErr)
     }
