@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
   AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
-  Store, Check, Share2, Plus,
+  Store, Check, Share2, Plus, Pencil,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -397,6 +397,57 @@ function SplitToggle({ value, onChange }) {
   )
 }
 
+// ---- Nom d'article éditable (l'OCR déforme souvent un nom : "AISIN ROSE VRAC"
+// au lieu de "RAISIN ROSE VRAC") ----
+function NomArticleEditable({ valeur, onChange }) {
+  const [renommage, setRenommage] = useState(false)
+  const [texte, setTexte] = useState(valeur)
+  const submisRef = useRef(false)
+
+  function confirmer() {
+    const trimmed = texte.trim()
+    if (trimmed && trimmed !== valeur) onChange(trimmed)
+    setRenommage(false)
+  }
+
+  function annuler() {
+    setTexte(valeur)
+    setRenommage(false)
+  }
+
+  if (renommage) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={texte}
+        onChange={e => setTexte(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); submisRef.current = true; confirmer() }
+          if (e.key === 'Escape') { submisRef.current = true; annuler() }
+        }}
+        onBlur={() => {
+          if (submisRef.current) { submisRef.current = false; return }
+          confirmer()
+        }}
+        className="w-full rounded-lg border-2 border-[color:var(--accent)]/50 bg-white/80 px-2 py-1 text-sm font-semibold ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => { setTexte(valeur); setRenommage(true) }}
+      title="Renommer cet article"
+      className="flex items-center gap-1.5 text-left group"
+    >
+      <span className="text-sm font-semibold ink">{valeur}</span>
+      <Pencil size={11} className="ink-4 group-hover:accent-text transition-colors shrink-0" />
+    </button>
+  )
+}
+
 // ---- Sélecteur d'ingrédient (dropdown pour correction manuelle) ----
 
 // ---- Prix éditable (corriger une erreur d'OCR avant validation) ----
@@ -754,6 +805,24 @@ function Scanner() {
     ))
   }
 
+  // L'OCR peut aussi déformer un nom ("AISIN ROSE VRAC" au lieu de "RAISIN ROSE
+  // VRAC"). Si l'article n'était pas encore associé, on retente le rapprochement
+  // automatique avec le nom corrigé (et on initialise le split comme le ferait
+  // une association manuelle) ; sinon on garde l'association déjà faite.
+  function renommerArticle(articleId, nouveauNom) {
+    const article = articles.find(a => a.id === articleId)
+    if (!article) return
+
+    let matchedNom = article.matchedNom
+    if (!matchedNom) {
+      matchedNom = trouverCorrespondance(nouveauNom, ingredientNames, getOcrAlias)
+      if (matchedNom) {
+        setArticleSplits(prev => ({ ...prev, [articleId]: getHistoriqueSplits(matchedNom) ?? getSplit(matchedNom) }))
+      }
+    }
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, nom: nouveauNom, matchedNom } : a))
+  }
+
   // L'OCR peut se tromper sur un prix (chiffre mal lu, lignes fusionnées) : on
   // corrige ici la valeur ET prixBase, pour que la correction se propage bien à
   // prix_observations / ticket_articles (qui utilisent prixBase ?? prix).
@@ -1042,9 +1111,11 @@ function Scanner() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-semibold ${article.ignored ? 'line-through ink-4' : 'ink'}`}>
-                    {article.nom}
-                  </p>
+                  {article.ignored ? (
+                    <p className="text-sm font-semibold line-through ink-4">{article.nom}</p>
+                  ) : (
+                    <NomArticleEditable valeur={article.nom} onChange={nom => renommerArticle(article.id, nom)} />
+                  )}
                   {article.receiptCategory && (
                     <p className="text-[10px] ink-4 mt-0.5">{article.receiptCategory}</p>
                   )}
