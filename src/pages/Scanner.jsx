@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ScanLine, Upload, Camera, RotateCcw, CheckCircle2,
   AlertCircle, Trash2, ChevronDown, Undo2, BookmarkCheck, CalendarDays,
-  Store, Check, Share2,
+  Store, Check, Share2, Plus,
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
@@ -398,6 +398,33 @@ function SplitToggle({ value, onChange }) {
 
 // ---- Sélecteur d'ingrédient (dropdown pour correction manuelle) ----
 
+// ---- Prix éditable (corriger une erreur d'OCR avant validation) ----
+function PrixEditable({ valeur, onChange }) {
+  const [texte, setTexte] = useState(valeur.toFixed(2).replace('.', ','))
+
+  useEffect(() => { setTexte(valeur.toFixed(2).replace('.', ',')) }, [valeur])
+
+  function commit() {
+    const n = parseFloat(texte.replace(',', '.'))
+    if (Number.isFinite(n) && n > 0) onChange(Number(n.toFixed(2)))
+    else setTexte(valeur.toFixed(2).replace('.', ','))
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={texte}
+      onChange={e => setTexte(e.target.value)}
+      onFocus={e => e.target.select()}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+      title="Corriger le prix"
+      className="w-16 rounded-lg border border-white/70 bg-white/60 px-1.5 py-0.5 text-sm font-bold ink text-right tabular-nums mono focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+    />
+  )
+}
+
 function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngredient }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -504,6 +531,9 @@ function Scanner() {
   const [dateTicket, setDateTicket] = useState(() => new Date().toISOString().slice(0, 10))
   const [storeOpen, setStoreOpen] = useState(false)
   const storeRef = useRef(null)
+  // Formulaire "article manquant" (ex: ligne totalement ratée par l'OCR)
+  const [nouvelArticleNom, setNouvelArticleNom] = useState('')
+  const [nouvelArticlePrix, setNouvelArticlePrix] = useState('')
 
   useEffect(() => {
     function onOutsideClick(e) { if (storeRef.current && !storeRef.current.contains(e.target)) setStoreOpen(false) }
@@ -682,6 +712,41 @@ function Scanner() {
     setArticles(prev => prev.map(a =>
       a.id === id ? { ...a, ignored: !a.ignored } : a
     ))
+  }
+
+  // L'OCR peut se tromper sur un prix (chiffre mal lu, lignes fusionnées) : on
+  // corrige ici la valeur ET prixBase, pour que la correction se propage bien à
+  // prix_observations / ticket_articles (qui utilisent prixBase ?? prix).
+  function corrigerPrix(articleId, nouveauPrix) {
+    setArticles(prev => prev.map(a =>
+      a.id === articleId ? { ...a, prix: nouveauPrix, prixBase: nouveauPrix } : a
+    ))
+  }
+
+  // Article totalement raté par l'OCR (ligne illisible, absente du texte reconnu) :
+  // on l'ajoute à la main, avec la même forme que les articles parsés.
+  function ajouterArticleManuel(e) {
+    e.preventDefault()
+    const nom = nouvelArticleNom.trim()
+    const prix = parseFloat(nouvelArticlePrix.replace(',', '.'))
+    if (!nom || !Number.isFinite(prix) || prix <= 0) return
+
+    const id = crypto.randomUUID()
+    setArticles(prev => [...prev, {
+      id,
+      nom: nom.toUpperCase(),
+      prix: Number(prix.toFixed(2)),
+      prixBase: Number(prix.toFixed(2)),
+      nombre: 1,
+      quantite: null,
+      unite: null,
+      matchedNom: null,
+      receiptCategory: null,
+      ignored: false,
+    }])
+    setArticleSplits(prev => ({ ...prev, [id]: 'both' }))
+    setNouvelArticleNom('')
+    setNouvelArticlePrix('')
   }
 
   function corrigerMatch(articleId, nouvelIngredient) {
@@ -995,9 +1060,16 @@ function Scanner() {
                   )}
                 </div>
 
-                <span className={`text-sm font-bold tabular-nums mono shrink-0 pt-0.5 ${article.ignored ? 'ink-4 line-through' : 'ink-2'}`}>
-                  {article.prix.toFixed(2)} €
-                </span>
+                {article.ignored ? (
+                  <span className="text-sm font-bold tabular-nums mono shrink-0 pt-0.5 ink-4 line-through">
+                    {article.prix.toFixed(2)} €
+                  </span>
+                ) : (
+                  <div className="shrink-0 pt-0.5 flex items-center gap-1">
+                    <PrixEditable valeur={article.prix} onChange={n => corrigerPrix(article.id, n)} />
+                    <span className="text-xs ink-3">€</span>
+                  </div>
+                )}
 
                 {!article.ignored && (
                   <div className="shrink-0 pt-0.5">
@@ -1016,6 +1088,33 @@ function Scanner() {
             )
           })}
         </div>
+
+        {/* Article manquant (raté par l'OCR) */}
+        <form onSubmit={ajouterArticleManuel} className="flex flex-wrap items-center gap-2 mt-3 glass-sm px-3 py-2.5">
+          <Plus size={14} className="ink-4 shrink-0" />
+          <input
+            type="text"
+            value={nouvelArticleNom}
+            onChange={e => setNouvelArticleNom(e.target.value)}
+            placeholder="Article manquant (ex : Pizza poulet BBQ)"
+            className="flex-1 min-w-32 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+          />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={nouvelArticlePrix}
+            onChange={e => setNouvelArticlePrix(e.target.value)}
+            placeholder="Prix"
+            className="w-20 rounded-lg border border-white/70 bg-white/60 px-2.5 py-1.5 text-sm ink text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-[color:var(--accent)]/40"
+          />
+          <button
+            type="submit"
+            disabled={!nouvelArticleNom.trim() || !nouvelArticlePrix.trim()}
+            className="flex items-center gap-1 accent-bg rounded-lg px-3 py-1.5 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Ajouter
+          </button>
+        </form>
 
         {/* Bouton Valider */}
         <div className="mt-4 flex justify-center">
