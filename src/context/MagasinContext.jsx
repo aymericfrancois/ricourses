@@ -647,6 +647,24 @@ export function MagasinProvider({ children }) {
             .then(({ error: e }) => { if (e) console.error('renommerIngredientDansRayons splits delete:', e) })
         })
     }
+
+    // Migrer les alias OCR pointant vers l'ancien nom : un alias associe un
+    // texte de ticket normalisé (ex: "skyr yoplait nature 850g") à un ingrédient
+    // exact ("Skyr nature"). Sans cette migration, un futur scan du même
+    // article continuerait de proposer l'ancien nom, déjà renommé partout
+    // ailleurs — c'est précisément le trou que ce bloc comble.
+    setOcrAliasesState(prev => {
+      let modifie = false
+      const next = { ...prev }
+      for (const [cle, valeur] of Object.entries(prev)) {
+        if (valeur.toLowerCase() === ancienKey) { next[cle] = nouveauNomTrimmed; modifie = true }
+      }
+      return modifie ? next : prev
+    })
+    supabase.from('ocr_aliases')
+      .update({ ingredient_nom: nouveauNomTrimmed })
+      .ilike('ingredient_nom', ancienNom)
+      .then(({ error }) => { if (error) console.error('renommerIngredientDansRayons alias ocr:', error) })
   }
 
   function supprimerIngredientDansRayons(nom) {
