@@ -547,6 +547,16 @@ export function MagasinProvider({ children }) {
     return ticketId
   }
 
+  // Correction ponctuelle d'un ticket déjà enregistré (date d'achat, enseigne…),
+  // utilisée à la fois par /historique et par l'écran récapitulatif du Scanner
+  // (édition "a posteriori" juste après validation, sans repasser par la liste
+  // d'articles). La date de scan (created_at) n'est volontairement pas éditable.
+  async function modifierTicket(ticketId, champs) {
+    const { error } = await supabase.from('tickets').update(champs).eq('id', ticketId)
+    if (error) { console.error('modifierTicket:', error); return false }
+    return true
+  }
+
   // ---- Magasin actif ----
   function setMagasinActif(nom) {
     setMagasinActifState(nom)
@@ -690,7 +700,7 @@ export function MagasinProvider({ children }) {
       standaloneIngredients, ajouterIngredientStandalone,
       getSplit, setSplit, getHistoriqueSplits, enregistrerHistorique,
       ocrAliases, getOcrAlias, setOcrAlias,
-      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix, enregistrerTicket, chercherTicketsExistants,
+      prixObservations, getDernierePrixObs, getHistoriquePrix, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, modifierTicket,
     }}>
       {children}
     </MagasinContext.Provider>

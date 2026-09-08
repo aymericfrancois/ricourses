@@ -9,6 +9,8 @@ import Tesseract from 'tesseract.js'
 import { useMagasinContext } from '../context/MagasinContext'
 import { usePlats } from '../hooks/usePlats'
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // ---- Helpers OCR ----
 
 function normaliser(str) {
@@ -681,10 +683,80 @@ function IngredientSelector({ currentMatch, suggestions, onSelect, onCreateIngre
   )
 }
 
+// ---- Montant Tricount copiable individuellement (pour coller à la main) ----
+function MontantCopiable({ emoji, label, valeur, colorClass, bgClass }) {
+  const [copie, setCopie] = useState(false)
+
+  async function copier() {
+    try {
+      await navigator.clipboard.writeText(valeur.toFixed(2))
+      setCopie(true)
+      setTimeout(() => setCopie(false), 1500)
+    } catch { /* presse-papier indisponible */ }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copier}
+      title="Copier ce montant"
+      className={`flex-1 rounded-xl border px-3 py-3 text-center transition-colors hover:brightness-95 ${bgClass}`}
+    >
+      <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${colorClass}`}>{emoji} {label}</p>
+      <p className="text-xl font-extrabold ink tabular-nums mono">{valeur.toFixed(2)} €</p>
+      <p className="text-[10px] ink-4 flex items-center justify-center gap-1 mt-0.5">
+        {copie ? <><Check size={10} className="text-green-600" />Copié</> : <><Copy size={10} />Copier</>}
+      </p>
+    </button>
+  )
+}
+
+// ---- Écran récapitulatif après validation : la répartition Tricount et l'envoi
+// n'apparaissent qu'ici, plus pendant la relecture des articles. ----
+function RecapitulatifTicket({ totalTicket, partMoi, partAli, nbArticles, nbMoi, nbBoth, nbAli, onModifier, onEnvoyerTricount, tricountCopie }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col items-center gap-2.5 py-2">
+        <span className="flex items-center gap-2 text-sm font-extrabold text-green-700 bg-green-50 border-2 border-green-300 rounded-xl px-5 py-3 shadow-sm">
+          <BookmarkCheck size={18} />Ticket traité et mémorisé
+        </span>
+        <button
+          type="button"
+          onClick={onModifier}
+          className="flex items-center gap-1.5 text-xs ink-3 hover:accent-text transition-colors"
+        >
+          <Pencil size={12} />Modifier les articles
+        </button>
+      </div>
+
+      <div className="glass sheen px-4 py-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div>
+            <p className="text-[10px] font-bold ink-3 uppercase tracking-widest">Total ticket</p>
+            <p className="text-2xl font-extrabold ink tabular-nums mono">{totalTicket.toFixed(2)} €</p>
+          </div>
+          <p className="text-xs ink-3">{nbArticles} article{nbArticles > 1 ? 's' : ''} · 👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
+        </div>
+        <div className="flex gap-2">
+          <MontantCopiable emoji="👦" label="Moi" valeur={partMoi} colorClass="text-blue-500" bgClass="bg-blue-50/60 border-blue-200" />
+          <MontantCopiable emoji="👩" label="Ali" valeur={partAli} colorClass="text-pink-500" bgClass="bg-pink-50/60 border-pink-200" />
+        </div>
+      </div>
+
+      <button
+        onClick={onEnvoyerTricount}
+        className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold magasin-grad-bg hover:brightness-110 shadow-md active:scale-[0.98] transition-all"
+      >
+        {tricountCopie ? <><Check size={16} />Copié dans le presse-papier</> : <><Share2 size={16} />Envoyer vers Tricount</>}
+      </button>
+    </div>
+  )
+}
+
 // ---- Page Scanner ----
 
 function Scanner() {
-  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, getDernierePrixObs, renommerIngredientDansRayons } = useMagasinContext()
+  const { getSplit, getHistoriqueSplits, enregistrerHistorique, standaloneIngredients, ajouterIngredientStandalone, getOcrAlias, setOcrAlias, magasinActif, setMagasinActif, magasins, enregistrerPrix, enregistrerTicket, chercherTicketsExistants, modifierTicket, getDernierePrixObs, renommerIngredientDansRayons } = useMagasinContext()
   const { plats, renommerIngredient } = usePlats()
 
   const [step, setStep] = useState('capture')
@@ -713,6 +785,10 @@ function Scanner() {
   const [ticketsExistants, setTicketsExistants] = useState([])
   const [avertissementIgnore, setAvertissementIgnore] = useState(false)
   const [remplacerTicketId, setRemplacerTicketId] = useState(null)
+  // id du ticket une fois enregistré — permet l'édition "a posteriori" (date,
+  // magasin) depuis l'écran récapitulatif, et le "remplacer" si on rouvre
+  // l'édition des articles depuis cet écran.
+  const [ticketEnregistreId, setTicketEnregistreId] = useState(null)
 
   useEffect(() => {
     function onOutsideClick(e) { if (storeRef.current && !storeRef.current.contains(e.target)) setStoreOpen(false) }
@@ -729,24 +805,35 @@ function Scanner() {
     if (step !== 'resultat' || validated) return
     let annule = false
     chercherTicketsExistants(magasinActif, dateTicket).then(res => {
-      if (!annule) setTicketsExistants(res)
+      // Un ticket ne peut pas être son propre doublon (cas : on rouvre l'édition
+      // depuis l'écran récapitulatif, remplacerTicketId == ticketEnregistreId).
+      if (!annule) setTicketsExistants(res.filter(t => t.id !== ticketEnregistreId))
     })
     return () => { annule = true }
     // chercherTicketsExistants n'est pas mémoïsée (recréée à chaque rendu de
     // MagasinProvider) : l'inclure redéclencherait cet effet à chaque rendu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, magasinActif, dateTicket, validated])
+  }, [step, magasinActif, dateTicket, validated, ticketEnregistreId])
 
+  // Après validation, éditer la date/le magasin corrige directement le ticket
+  // déjà enregistré (édition "a posteriori"), en plus de l'état local.
   function handleDateChange(valeur) {
     setDateTicket(valeur)
     setAvertissementIgnore(false)
     setRemplacerTicketId(null)
+    if (validated && ticketEnregistreId) modifierTicket(ticketEnregistreId, { date_ticket: valeur })
   }
 
   function handleMagasinChange(nom) {
     setMagasinActif(nom)
     setAvertissementIgnore(false)
     setRemplacerTicketId(null)
+    if (validated && ticketEnregistreId) {
+      const magasin = magasins.find(m => m.nom === nom)
+      if (magasin && UUID_REGEX.test(magasin.id)) {
+        modifierTicket(ticketEnregistreId, { magasin_id: magasin.id, magasin_nom: magasin.nom })
+      }
+    }
   }
 
   const fileInputRef = useRef(null)
@@ -868,6 +955,14 @@ function Scanner() {
     setTicketsExistants([])
     setAvertissementIgnore(false)
     setRemplacerTicketId(null)
+    setTicketEnregistreId(null)
+  }
+
+  // Depuis l'écran récapitulatif : rouvrir l'édition des articles. La prochaine
+  // validation remplacera (et non dupliquera) le ticket déjà enregistré.
+  function reprendreEdition() {
+    setRemplacerTicketId(ticketEnregistreId)
+    setValidated(false)
   }
 
   // Quantité totale = nombre d'exemplaires × contenance unitaire (ex: 2 × 850 g
@@ -912,11 +1007,12 @@ function Scanner() {
       }
     })
 
-    await Promise.all([
+    const [, , idTicket] = await Promise.all([
       enregistrerHistorique(histEntries),
       enregistrerPrix(prixEntries, dateTicket),
       enregistrerTicket({ dateTicket, totalOfficiel: totalTicketOfficiel, articles: articlesTicket, imageFile, remplacerTicketId }),
     ])
+    setTicketEnregistreId(idTicket)
     setValidating(false)
     // Reste affiché de façon permanente (pas d'auto-masquage) : seul un nouveau
     // scan (handleReset) referme cet état "traité".
@@ -1210,7 +1306,7 @@ function Scanner() {
   const nbIgnored = articles.filter(a => a.ignored).length
 
   return (
-    <div className="pb-64">
+    <div className="pb-10">
       <main className="max-w-3xl mx-auto px-4 py-6 anim-in">
 
         {/* En-tête */}
@@ -1226,7 +1322,6 @@ function Scanner() {
                   </span>
                 )}
               </p>
-              <p className="text-xs ink-3">👦 {nbMoi} · 👥 {nbBoth} · 👩 {nbAli}</p>
             </div>
           </div>
           <button onClick={handleReset}
@@ -1278,8 +1373,30 @@ function Scanner() {
           </div>
         </div>
 
+        {/* Vérification du montant total détecté par l'OCR — c'est la seule
+            info de montant qui reste visible pendant la relecture ; la
+            répartition Tricount n'apparaît qu'après validation. */}
+        {totalTicketOfficiel != null && (
+          Math.abs(totalTicketOfficiel - totalTicket) > 0.05 ? (
+            <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
+              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+              <span>
+                Le total du ticket est <strong>{totalTicketOfficiel.toFixed(2)} €</strong> mais Ricourses n'a détecté que <strong>{totalTicket.toFixed(2)} €</strong> ({articlesActifs.length} articles).
+                Il manque peut-être des articles — vérifiez le ticket.
+              </span>
+            </div>
+          ) : (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-green-50 border border-green-200 px-3 py-2.5 text-xs text-green-700">
+              <CheckCircle2 size={14} className="shrink-0 text-green-500" />
+              <span>Total conforme au ticket : <strong>{totalTicket.toFixed(2)} €</strong> ({articlesActifs.length} articles)</span>
+            </div>
+          )
+        )}
+
+        {!validated ? (<>
+
         {/* Doublon détecté : même enseigne + même date de ticket */}
-        {!validated && ticketsExistants.length > 0 && !avertissementIgnore && (
+        {ticketsExistants.length > 0 && !avertissementIgnore && (
           <div className="mb-4 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm">
             <Copy size={16} className="shrink-0 mt-0.5 text-amber-500" />
             <div className="flex-1 min-w-0">
@@ -1506,91 +1623,43 @@ function Scanner() {
           </form>
         )}
 
-        {/* Bouton Valider — remplacé par un état "traité" permanent, jamais
-            auto-masqué : seul un nouveau scan (handleReset) le referme. */}
+        {/* Bouton Valider */}
         <div className="mt-4 flex justify-center">
-          {validated ? (
-            <div className="flex flex-col items-center gap-2.5">
-              <span className="flex items-center gap-2 text-sm font-extrabold text-green-700 bg-green-50 border-2 border-green-300 rounded-xl px-5 py-3 shadow-sm">
-                <BookmarkCheck size={18} />Ticket traité et mémorisé
-              </span>
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-1.5 text-xs ink-3 hover:accent-text transition-colors"
-              >
-                <RotateCcw size={12} />Scanner un nouveau ticket
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleValider}
-              disabled={validating || articlesActifs.filter(a => a.matchedNom).length === 0}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                validating || articlesActifs.filter(a => a.matchedNom).length === 0
-                  ? 'bg-white/40 ink-4 border border-white/60 cursor-not-allowed'
-                  : 'magasin-grad-bg hover:brightness-110 shadow-md active:scale-[0.98]'
-              }`}
-            >
-              {validating ? (
-                <><span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />Mémorisation…</>
-              ) : remplacerTicketId ? (
-                <><BookmarkCheck size={16} />Remplacer et mémoriser</>
-              ) : (
-                <><BookmarkCheck size={16} />Valider et mémoriser</>
-              )}
-            </button>
-          )}
-        </div>
-
-      </main>
-
-      {/* Panneau Tricount fixe */}
-      <div className="fixed bottom-0 left-0 right-0 z-30">
-        <div className="h-14 bg-gradient-to-b from-transparent to-white/80 pointer-events-none" />
-        <div className="px-4 pb-4 space-y-2">
-
-        <div className="max-w-3xl mx-auto glass-strong sheen px-4 py-4" style={{ background: 'rgba(255,255,255,0.96)' }}>
-          {totalTicketOfficiel != null && Math.abs(totalTicketOfficiel - totalTicket) > 0.05 && (
-            <div className="mb-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-              <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-500" />
-              <span>
-                Le total du ticket est <strong>{totalTicketOfficiel.toFixed(2)} €</strong> mais Ricourses n'a détecté que <strong>{totalTicket.toFixed(2)} €</strong> ({articlesActifs.length} articles).
-                Il manque peut-être des articles — vérifiez le ticket.
-              </span>
-            </div>
-          )}
-          <div className="flex items-stretch gap-4">
-            <div className="flex-1">
-              <p className="text-[10px] font-bold ink-3 uppercase tracking-widest mb-0.5">Total ticket</p>
-              <p className="text-2xl font-extrabold ink tabular-nums mono">{totalTicket.toFixed(2)} €</p>
-              <p className="text-[10px] ink-3 mt-0.5">{articlesActifs.length} articles</p>
-            </div>
-            <div className="w-px bg-white/50" />
-            <div className="flex-1 text-center">
-              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-0.5">👦 Moi</p>
-              <p className="text-2xl font-extrabold text-blue-600 tabular-nums mono">{partMoi.toFixed(2)} €</p>
-              <p className="text-[10px] text-blue-400 mt-0.5">{nbMoi} solo + {nbBoth} partagés</p>
-            </div>
-            <div className="w-px bg-white/50" />
-            <div className="flex-1 text-center">
-              <p className="text-[10px] font-bold text-pink-500 uppercase tracking-widest mb-0.5">👩 Ali</p>
-              <p className="text-2xl font-extrabold text-pink-600 tabular-nums mono">{partAli.toFixed(2)} €</p>
-              <p className="text-[10px] text-pink-400 mt-0.5">{nbAli} solo + {nbBoth} partagés</p>
-            </div>
-          </div>
           <button
-            onClick={partagerTricount}
-            className="mt-3 w-full magasin-grad-bg rounded-xl py-2.5 text-sm font-bold flex items-center justify-center gap-2 shadow-sm active:scale-[0.99] transition-transform"
+            onClick={handleValider}
+            disabled={validating || articlesActifs.filter(a => a.matchedNom).length === 0}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              validating || articlesActifs.filter(a => a.matchedNom).length === 0
+                ? 'bg-white/40 ink-4 border border-white/60 cursor-not-allowed'
+                : 'magasin-grad-bg hover:brightness-110 shadow-md active:scale-[0.98]'
+            }`}
           >
-            {tricountCopie ? (
-              <><Check size={16} /> Récap copié !</>
+            {validating ? (
+              <><span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />Mémorisation…</>
+            ) : remplacerTicketId ? (
+              <><BookmarkCheck size={16} />Remplacer et mémoriser</>
             ) : (
-              <><Share2 size={16} /> Envoyer vers Tricount</>
+              <><BookmarkCheck size={16} />Valider et mémoriser</>
             )}
           </button>
         </div>
-        </div>
-      </div>
+
+        </>) : (
+          <RecapitulatifTicket
+            totalTicket={totalTicket}
+            partMoi={partMoi}
+            partAli={partAli}
+            nbArticles={articlesActifs.length}
+            nbMoi={nbMoi}
+            nbBoth={nbBoth}
+            nbAli={nbAli}
+            onModifier={reprendreEdition}
+            onEnvoyerTricount={partagerTricount}
+            tricountCopie={tricountCopie}
+          />
+        )}
+
+      </main>
     </div>
   )
 }
