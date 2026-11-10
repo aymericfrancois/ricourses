@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Trash2, Plus, RotateCcw, X,
-  Check, ChevronDown, ChevronUp, Bookmark, BookmarkCheck, Wallet,
+  Check, ChevronDown, ChevronUp, Bookmark, BookmarkCheck, Wallet, ClipboardList,
 } from 'lucide-react'
 import { usePlats } from '../hooks/usePlats'
 import { usePlanningContext } from '../context/PlanningContext'
@@ -21,6 +21,39 @@ const inputXs =
   'rounded-lg border border-white/70 bg-white/70 px-1.5 py-0.5 text-xs ink placeholder:text-[color:var(--ink-3)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40'
 const selectXs =
   'rounded-lg border border-white/70 bg-white/70 px-1 py-0.5 text-xs ink focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]/40'
+
+// Parse une ligne de liste de courses collée (une ligne = un article) en
+// { nom, quantite, unite }. Reconnaît : case à cocher markdown en tête
+// ("- [ ] "), quantité + unité de poids/volume ("4 kg de riz"), quantité seule
+// ("2 citrons", "12 boîtes de thon"), ou suffixe "x2"/"×2". Repli : l'article
+// entier en nom, quantité 1 pièce. Heuristique volontairement simple — une
+// ligne contenant plusieurs variantes ("riz : thaï / basmati") n'est PAS
+// scindée automatiquement, à séparer en 2 lignes avant de coller si besoin.
+function parserLigneListe(ligne) {
+  const s = ligne
+    .replace(/^[-*]\s*\[[ xX]?\]\s*/, '')
+    .replace(/^[-*•]\s*/, '')
+    .trim()
+  if (!s) return null
+
+  let m = s.match(/^(.*?)\s*[x×]\s*(\d+)\s*$/i)
+  if (m && m[1].trim()) {
+    return { nom: m[1].trim(), quantite: parseInt(m[2], 10), unite: 'pièce' }
+  }
+
+  m = s.match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|l|cl|ml)\b\.?\s*(?:de\s+|d['’])?(.*)$/i)
+  if (m && m[3].trim()) {
+    const uniteCanon = { kg: 'kg', g: 'g', l: 'L', cl: 'cL', ml: 'mL' }[m[2].toLowerCase()]
+    return { nom: m[3].trim(), quantite: parseFloat(m[1].replace(',', '.')), unite: uniteCanon }
+  }
+
+  m = s.match(/^(\d+)\s+(.*)$/)
+  if (m && m[2].trim()) {
+    return { nom: m[2].trim(), quantite: parseInt(m[1], 10), unite: 'pièce' }
+  }
+
+  return { nom: s, quantite: 1, unite: 'pièce' }
+}
 
 // ---- Combobox Plats ----
 function PlatCombobox({ value, onChange, plats, onCreatePlat }) {
@@ -349,6 +382,21 @@ function Planning() {
     setFormsLibres(prev => ({ ...prev, [bloc]: { nom: '', quantite: '', unite: 'pièce', platId: null } }))
   }
 
+  // ---- Coller une liste (plusieurs articles d'un coup, 1 ligne = 1 article) ----
+  const [collageOuvert, setCollageOuvert] = useState({})
+  const [texteCollage, setTexteCollage] = useState({})
+
+  function handleColler(e, bloc) {
+    e.preventDefault()
+    const lignes = (texteCollage[bloc] ?? '').split('\n').map(l => l.trim()).filter(Boolean)
+    for (const ligne of lignes) {
+      const parsed = parserLigneListe(ligne)
+      if (parsed) ajouterIngredientLibre(bloc, parsed)
+    }
+    setTexteCollage(prev => ({ ...prev, [bloc]: '' }))
+    setCollageOuvert(prev => ({ ...prev, [bloc]: false }))
+  }
+
   function handleReset() {
     if (!confirmReset) {
       setConfirmReset(true)
@@ -515,6 +563,45 @@ function Planning() {
                     <Plus size={14} />Ajouter
                   </button>
                 </form>
+
+                {/* Coller plusieurs articles d'un coup (1 ligne = 1 article) */}
+                {collageOuvert[key] ? (
+                  <form onSubmit={e => handleColler(e, key)} className="space-y-1.5 pt-1">
+                    <textarea
+                      autoFocus
+                      value={texteCollage[key] ?? ''}
+                      onChange={e => setTexteCollage(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder={'Une ligne = un article, ex :\n- [ ] 4 kg de riz\n2 citrons\ngel douche x2'}
+                      rows={4}
+                      className={`w-full ${inputBase} resize-y`}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        disabled={!(texteCollage[key] ?? '').trim()}
+                        className="flex items-center gap-1 accent-bg rounded-xl px-3 py-1.5 text-sm font-semibold hover:brightness-110 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <ClipboardList size={14} />
+                        Ajouter {(texteCollage[key] ?? '').split('\n').map(l => l.trim()).filter(Boolean).length || ''} article{(texteCollage[key] ?? '').split('\n').map(l => l.trim()).filter(Boolean).length > 1 ? 's' : ''}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCollageOuvert(prev => ({ ...prev, [key]: false }))}
+                        className="text-xs ink-3 hover:ink transition-colors"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCollageOuvert(prev => ({ ...prev, [key]: true }))}
+                    className="flex items-center gap-1.5 text-xs ink-3 hover:accent-text transition-colors pt-0.5"
+                  >
+                    <ClipboardList size={12} />Coller une liste (plusieurs articles)
+                  </button>
+                )}
               </div>
             </div>
           ))}
