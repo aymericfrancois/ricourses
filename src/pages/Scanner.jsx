@@ -34,6 +34,19 @@ const MOTS_CLES_IGNORER = [
   'nombre de lignes', 'a payer', 'eligible',
 ]
 
+// Les mots-clés courts ("paye", "cb", "dont"…) doivent correspondre à un MOT
+// ENTIER : en sous-chaîne, "paye" excluait "Masque papaye" (article réel
+// perdu). Les mots longs restent en sous-chaîne (tolère un OCR collé/tronqué).
+const REGEX_MOTS_CLES_COURTS = MOTS_CLES_IGNORER
+  .filter(kw => kw.length <= 6)
+  .map(kw => new RegExp(`(?:^|\\s)${kw}s?(?:\\s|$)`))
+const MOTS_CLES_LONGS = MOTS_CLES_IGNORER.filter(kw => kw.length > 6)
+
+function ligneAIgnorer(normLigne) {
+  return REGEX_MOTS_CLES_COURTS.some(re => re.test(normLigne))
+    || MOTS_CLES_LONGS.some(kw => normLigne.includes(kw))
+}
+
 // Normalise un token d'unité OCR (insensible casse/accents) vers nos unités canoniques.
 function normUnite(u) {
   const x = u.toLowerCase().replace('×', 'x')
@@ -111,7 +124,7 @@ function parserTicket(texte) {
     }
 
     const normLigne = normaliser(trimmed)
-    if (MOTS_CLES_IGNORER.some(kw => normLigne.includes(kw))) continue
+    if (ligneAIgnorer(normLigne)) continue
 
     // Ligne de pesée "0,038 kg x 2,79 EUR/kg" → patch l'article précédent avec le vrai poids
     if (articles.length > 0) {
@@ -123,6 +136,42 @@ function parserTicket(texte) {
           lastArticle.unite = normUnite(mPesee[2])
         }
         continue
+      }
+    }
+
+    // Ligne de tableau "Nom  P.U.  Qté  Total  [lettre TVA]" (Lidl, ticket numérique) :
+    //   "Lait demi-écrémé UHT 0,96 6 5,76 A T"  → 6 exemplaires, total 5,76 €.
+    // Garde-fou : Qté × P.U. doit retomber sur le total, sinon ce n'est pas une
+    // ligne de ce format (ex: "Muesli 4 noix 2,25 1 2,25" reste cohérent, un nom
+    // contenant juste des chiffres ne suffit pas à déclencher la branche).
+    const mTableau = trimmed.match(/^(.+?)\s+(\d{1,4}[,.]\d{2})\s+(\d{1,3})\s+(\d{1,4}[,.]\d{2})(?:\s+[A-Za-z]{1,2}){0,3}\s*$/)
+    if (mTableau) {
+      const pu = parseFloat(mTableau[2].replace(',', '.'))
+      const qte = parseInt(mTableau[3], 10)
+      const totalLigne = parseFloat(mTableau[4].replace(',', '.'))
+      if (qte >= 1 && totalLigne > 0 && totalLigne <= 500 && Math.abs(qte * pu - totalLigne) <= 0.02 * qte + 0.01) {
+        const nomBrut = mTableau[1]
+        const nomNettoye = nomBrut
+          .replace(/^[^a-zA-ZÀ-ÿ0-9]+/, '')
+          .replace(/^\d{5,}\s*/, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+        if (nomNettoye.length >= 2 && /[a-zA-ZÀ-ÿ]{3}/.test(nomNettoye)) {
+          const qtyInfo = extraireQtyUnite(nomBrut)
+          articles.push({
+            id: crypto.randomUUID(),
+            nom: nomNettoye.toUpperCase(),
+            prix: totalLigne,
+            prixBase: totalLigne,
+            nombre: qte,
+            quantite: qtyInfo?.quantite ?? null,
+            unite: qtyInfo?.unite ?? null,
+            matchedNom: null,
+            receiptCategory: currentCategory,
+            ignored: false,
+          })
+          continue
+        }
       }
     }
 
@@ -895,6 +944,7 @@ function Scanner() {
         if (seenNames[key] != null) {
           deduped[seenNames[key]].prix = Number((deduped[seenNames[key]].prix + a.prix).toFixed(2))
           deduped[seenNames[key]].prixBase = Number((deduped[seenNames[key]].prixBase + a.prix).toFixed(2))
+          deduped[seenNames[key]].nombre = (deduped[seenNames[key]].nombre ?? 1) + (a.nombre ?? 1)
         } else {
           seenNames[key] = deduped.length
           deduped.push({ ...a })
